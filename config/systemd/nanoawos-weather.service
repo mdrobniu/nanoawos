@@ -1,0 +1,15 @@
+[Unit]
+Description=NanoAWOS Weather Update
+After=network-online.target mpd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -m nanoawos.weather
+WorkingDirectory=/opt/nanoawos
+Environment=PYTHONPATH=/opt/nanoawos
+Environment=PYTHONUNBUFFERED=1
+Nice=19
+
+[Install]
+WantedBy=multi-user.target

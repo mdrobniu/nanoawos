@@ -1,0 +1,16 @@
+[Unit]
+Description=NanoAWOS Click Detector
+After=multi-user.target mpd.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+ExecStart=/usr/bin/python3 -m nanoawos.tap
+WorkingDirectory=/opt/nanoawos
+Environment=PYTHONPATH=/opt/nanoawos
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

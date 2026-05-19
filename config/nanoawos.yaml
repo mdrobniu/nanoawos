@@ -1,0 +1,44 @@
+station:
+  id: "IGIYN1"
+  icao: "EPMY"
+  name: "echo papa mike yankee"
+  elevation_ft: 230
+  runways: [15, 33]
+
+weather:
+  api_key: "23bb5436fdd34fe6bb5436fdd30fe6d5"
+  update_interval_sec: 300
+  api_url: "https://api.weather.com/v2/pws/observations/current"
+
+tts:
+  engine: "piper"
+  piper_model: "/mnt/p4/models/en_US-ryan-medium.onnx"
+  output_dir: "/mnt/p4"
+
+audio:
+  mpd_host: "10.121.10.158"
+  mpd_port: 6600
+  gpio_pin: 201
+  alsa_device: "hw:2,0"
+
+tap:
+  amplitude_threshold: 0.2
+  quiet_blocks: 25
+  noisy_min_blocks: 1
+  short_clicks: 4
+  long_clicks: 6
+  calibration_seconds: 2
+  device_name: ""
+
+mqtt:
+  enabled: false
+  broker: "10.121.10.64"
+  port: 1883
+
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+
+oled:
+  enabled: true

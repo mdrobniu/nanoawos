@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NanoAWOS - {{ cfg.station.icao }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>NanoAWOS <span class="icao">{{ cfg.station.icao }}</span></h1>
+        <span class="uptime">Up {{ "%.0f"|format(uptime/3600) }}h {{ "%.0f"|format((uptime%3600)/60) }}m</span>
+    </header>
+
+    <!-- Weather Dashboard -->
+    <section class="card weather-card">
+        <h2>Current Weather</h2>
+        <div class="weather-grid" id="weather-data">
+            <div class="weather-item">
+                <label>Station</label>
+                <span id="w-metar">{{ weather.metar }}</span>
+            </div>
+            <div class="weather-item">
+                <label>Wind</label>
+                <span id="w-wind">{{ weather.wind }}</span>
+            </div>
+            <div class="weather-item">
+                <label>Temp/QNH</label>
+                <span id="w-temp">{{ weather.temp_qnh }}</span>
+            </div>
+            <div class="weather-item">
+                <label>Density Alt</label>
+                <span id="w-da">{{ weather.density_alt }}</span>
+            </div>
+        </div>
+        <div class="actions">
+            <button onclick="playWeather('full')" class="btn btn-primary">Play Full Weather</button>
+            <button onclick="playWeather('wind')" class="btn btn-secondary">Play Wind Only</button>
+            <button onclick="refreshWeather()" class="btn btn-outline">Refresh Now</button>
+        </div>
+    </section>
+
+    <!-- Audio Stream -->
+    <section class="card">
+        <h2>Live Audio</h2>
+        <audio id="stream" controls preload="none">
+            <source src="http://{{ request.host.split(':')[0] }}:8000/epmy" type="audio/ogg">
+        </audio>
+        <p class="hint">Icecast stream from radio input</p>
+    </section>
+
+    <!-- Services -->
+    <section class="card">
+        <h2>Services</h2>
+        <div class="services-grid">
+            {% for name, status in services.items() %}
+            <div class="service-item">
+                <span class="dot {{ 'green' if status == 'active' else 'red' }}"></span>
+                <span>{{ name }}</span>
+                <span class="status">{{ status }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- Configuration -->
+    <section class="card">
+        <h2>Configuration</h2>
+        <form id="config-form" onsubmit="saveConfig(event)">
+            <fieldset>
+                <legend>Station</legend>
+                <div class="form-row">
+                    <label>Station ID</label>
+                    <input name="station.id" value="{{ cfg.station.id }}">
+                </div>
+                <div class="form-row">
+                    <label>ICAO Code</label>
+                    <input name="station.icao" value="{{ cfg.station.icao }}">
+                </div>
+                <div class="form-row">
+                    <label>Station Name (spoken)</label>
+                    <input name="station.name" value="{{ cfg.station.name }}">
+                </div>
+                <div class="form-row">
+                    <label>Elevation (ft)</label>
+                    <input name="station.elevation_ft" type="number" value="{{ cfg.station.elevation_ft }}">
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Weather API</legend>
+                <div class="form-row">
+                    <label>API Key</label>
+                    <input name="weather.api_key" value="{{ cfg.weather.api_key }}">
+                </div>
+                <div class="form-row">
+                    <label>Update Interval (sec)</label>
+                    <input name="weather.update_interval_sec" type="number" value="{{ cfg.weather.update_interval_sec }}">
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Text-to-Speech</legend>
+                <div class="form-row">
+                    <label>Engine</label>
+                    <select name="tts.engine">
+                        <option value="piper" {{ 'selected' if cfg.tts.engine == 'piper' }}>Piper (local)</option>
+                        <option value="cloud" {{ 'selected' if cfg.tts.engine == 'cloud' }}>Cloud AI (OpenAI)</option>
+                        <option value="wav_concat" {{ 'selected' if cfg.tts.engine == 'wav_concat' }}>WAV Concat (legacy)</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Piper Model</label>
+                    <select name="tts.piper_model">
+                        {% for model in models %}
+                        <option value="{{ model }}" {{ 'selected' if model == cfg.tts.piper_model }}>{{ model.split('/')[-1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Cloud API Key</label>
+                    <input name="tts.cloud_api_key" value="{{ cfg.tts.get('cloud_api_key', '') }}" placeholder="sk-...">
+                </div>
+                <div class="form-row">
+                    <label>Cloud Voice</label>
+                    <select name="tts.cloud_voice">
+                        {% for v in ['nova', 'alloy', 'echo', 'fable', 'onyx', 'shimmer'] %}
+                        <option value="{{ v }}" {{ 'selected' if cfg.tts.get('cloud_voice') == v }}>{{ v }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Click Detection</legend>
+                <div class="form-row">
+                    <label>Amplitude Threshold</label>
+                    <input name="tap.amplitude_threshold" type="number" step="0.01" value="{{ cfg.tap.amplitude_threshold }}">
+                </div>
+                <div class="form-row">
+                    <label>Quiet Blocks</label>
+                    <input name="tap.quiet_blocks" type="number" value="{{ cfg.tap.quiet_blocks }}">
+                </div>
+                <div class="form-row">
+                    <label>Short Clicks (wind)</label>
+                    <input name="tap.short_clicks" type="number" value="{{ cfg.tap.short_clicks }}">
+                </div>
+                <div class="form-row">
+                    <label>Long Clicks (full)</label>
+                    <input name="tap.long_clicks" type="number" value="{{ cfg.tap.long_clicks }}">
+                </div>
+                <div class="form-row">
+                    <label>Calibration (sec)</label>
+                    <input name="tap.calibration_seconds" type="number" value="{{ cfg.tap.calibration_seconds }}">
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>MQTT</legend>
+                <div class="form-row">
+                    <label>Enabled</label>
+                    <input type="checkbox" name="mqtt.enabled" {{ 'checked' if cfg.mqtt.enabled }}>
+                </div>
+                <div class="form-row">
+                    <label>Broker</label>
+                    <input name="mqtt.broker" value="{{ cfg.mqtt.broker }}">
+                </div>
+                <div class="form-row">
+                    <label>Port</label>
+                    <input name="mqtt.port" type="number" value="{{ cfg.mqtt.port }}">
+                </div>
+            </fieldset>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Save Configuration</button>
+            </div>
+        </form>
+        <div id="save-status"></div>
+    </section>
+</div>
+
+<script>
+function playWeather(type) {
+    fetch('/api/play/' + type, {method: 'POST'})
+        .then(r => r.json())
+        .then(d => { document.querySelector('.weather-card h2').textContent = 'Playing ' + type + '...'; setTimeout(() => { document.querySelector('.weather-card h2').textContent = 'Current Weather'; }, 3000); });
+}
+
+function refreshWeather() {
+    fetch('/api/weather/refresh', {method: 'POST'})
+        .then(() => setTimeout(updateWeather, 5000));
+}
+
+function updateWeather() {
+    fetch('/api/weather')
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('w-metar').textContent = d.metar;
+            document.getElementById('w-wind').textContent = d.wind;
+            document.getElementById('w-temp').textContent = d.temp_qnh;
+            document.getElementById('w-da').textContent = d.density_alt;
+        });
+}
+
+function saveConfig(e) {
+    e.preventDefault();
+    const form = document.getElementById('config-form');
+    const data = {};
+    for (const el of form.elements) {
+        if (!el.name) continue;
+        const [section, key] = el.name.split('.');
+        if (!data[section]) data[section] = {};
+        if (el.type === 'checkbox') {
+            data[section][key] = el.checked;
+        } else if (el.type === 'number') {
+            data[section][key] = parseFloat(el.value);
+        } else {
+            data[section][key] = el.value;
+        }
+    }
+    fetch('/api/config', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).then(d => {
+        const status = document.getElementById('save-status');
+        status.textContent = 'Configuration saved. Restart services to apply.';
+        status.className = 'success';
+        setTimeout(() => { status.textContent = ''; }, 5000);
+    });
+}
+
+// Auto-refresh weather every 60s
+setInterval(updateWeather, 60000);
+</script>
+</body>
+</html>
