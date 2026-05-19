@@ -59,12 +59,16 @@ def wait_for_idle(cfg=None):
 
 
 def _mpc(args, cfg=None):
-    """Run an mpc command."""
-    if cfg is None:
-        cfg = load_config()
-    host = cfg["audio"]["mpd_host"]
-    cmd = ["mpc", "-h", host] + args
-    return subprocess.run(cmd, capture_output=True, text=True)
+    """Run an mpc command.
+
+    Uses local connection (no -h flag) because MPD restricts file access
+    when connecting via TCP. Local socket/loopback allows file:// paths.
+    """
+    cmd = ["mpc"] + args
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 and result.stderr:
+        log.warning("mpc %s failed: %s", args[0], result.stderr.strip())
+    return result
 
 
 def update_playlists(full_wav, wind_wav, cfg=None):
@@ -132,10 +136,14 @@ def gpio_watcher_main():
     from mpd import MPDClient
     from socket import error as SocketError
 
+    # Connect via localhost for local file access permissions
+    mpd_host = "localhost"
+    mpd_port = cfg["audio"]["mpd_port"]
+
     client = MPDClient()
     try:
-        client.connect(cfg["audio"]["mpd_host"], cfg["audio"]["mpd_port"])
-        log.info("Connected to MPD at %s:%s", cfg["audio"]["mpd_host"], cfg["audio"]["mpd_port"])
+        client.connect(mpd_host, mpd_port)
+        log.info("Connected to MPD at %s:%s", mpd_host, mpd_port)
     except SocketError:
         log.error("Failed to connect to MPD")
         sys.exit(1)
@@ -164,7 +172,7 @@ def gpio_watcher_main():
             except Exception:
                 pass
             try:
-                client.connect(cfg["audio"]["mpd_host"], cfg["audio"]["mpd_port"])
+                client.connect(mpd_host, mpd_port)
                 log.info("Reconnected to MPD")
             except Exception:
                 pass

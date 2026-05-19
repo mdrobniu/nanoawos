@@ -43,6 +43,13 @@ legend { color: #94a3b8; font-size: 0.85rem; padding: 0 0.5rem; }
 
 .success { color: #22c55e; padding: 0.5rem 0; font-size: 0.9rem; }
 
+.tap-monitor { margin-top: 0.5rem; }
+.tap-bar-container { position: relative; height: 24px; background: #0f172a; border-radius: 4px; overflow: hidden; margin-bottom: 0.5rem; }
+.tap-bar { height: 100%; width: 0%; transition: width 0.1s, background 0.1s; border-radius: 4px; }
+.tap-threshold { position: absolute; top: 0; height: 100%; width: 2px; background: #f59e0b; }
+.tap-info { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; color: #94a3b8; }
+.tap-info strong { color: #e2e8f0; font-family: "JetBrains Mono", monospace; }
+
 @media (max-width: 600px) {
     .weather-grid { grid-template-columns: 1fr; }
     .form-row { flex-direction: column; align-items: flex-start; gap: 0.25rem; }

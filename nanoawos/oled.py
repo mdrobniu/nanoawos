@@ -240,9 +240,9 @@ while True:
         lock.release()
 
         if page_index == 5:
-            subprocess.run(['mpc', '-h', '10.121.10.158', 'clear'])
-            subprocess.run(['mpc', '-h', '10.121.10.158', 'load', 'full'])
-            subprocess.run(['mpc', '-h', '10.121.10.158', 'play'])
+            subprocess.run(['mpc', 'clear'])
+            subprocess.run(['mpc', 'load', 'full'])
+            subprocess.run(['mpc', 'play'])
             time.sleep(5)
             pageIndex = 0
         elif page_index == 1:

@@ -87,13 +87,32 @@ def api_weather():
 def api_play(name):
     if name not in ("full", "wind"):
         return jsonify({"error": "Invalid playlist"}), 400
-    cfg = load_config()
-    host = cfg["audio"]["mpd_host"]
-    subprocess.run(["mpc", "-h", host, "clear"])
-    subprocess.run(["mpc", "-h", host, "load", name])
-    subprocess.run(["mpc", "-h", host, "crossfade", "1"])
-    subprocess.run(["mpc", "-h", host, "play"])
+    subprocess.run(["mpc", "clear"])
+    subprocess.run(["mpc", "load", name])
+    subprocess.run(["mpc", "crossfade", "1"])
+    subprocess.run(["mpc", "play"])
     return jsonify({"status": "playing", "playlist": name})
+
+
+@app.route("/api/tap")
+def api_tap():
+    """Live tap detector debug data."""
+    raw = _read_file("/tmp/tap_debug", "0 0 0 0 0 quiet")
+    parts = raw.split()
+    try:
+        return jsonify({
+            "amplitude": float(parts[0]),
+            "threshold": float(parts[1]),
+            "clicks": int(parts[2]),
+            "noisy_blocks": int(parts[3]),
+            "quiet_blocks": int(parts[4]),
+            "state": parts[5] if len(parts) > 5 else "unknown",
+            "last_tap": _read_file("/tmp/tap", "0"),
+        })
+    except (IndexError, ValueError):
+        return jsonify({"amplitude": 0, "threshold": 0, "clicks": 0,
+                        "noisy_blocks": 0, "quiet_blocks": 0,
+                        "state": "error", "last_tap": "0"})
 
 
 @app.route("/api/status")

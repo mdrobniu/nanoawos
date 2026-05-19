@@ -41,6 +41,23 @@
         </div>
     </section>
 
+    <!-- Tap Detection Debug -->
+    <section class="card">
+        <h2>Click Detection <span id="tap-state" class="status"></span></h2>
+        <div class="tap-monitor">
+            <div class="tap-bar-container">
+                <div class="tap-bar" id="tap-bar"></div>
+                <div class="tap-threshold" id="tap-threshold-line"></div>
+            </div>
+            <div class="tap-info">
+                <span>Amplitude: <strong id="tap-amp">0.000</strong></span>
+                <span>Threshold: <strong id="tap-thr">0.000</strong></span>
+                <span>Clicks: <strong id="tap-clicks">0</strong></span>
+                <span>Last Tap: <strong id="tap-last">0</strong></span>
+            </div>
+        </div>
+    </section>
+
     <!-- Audio Stream -->
     <section class="card">
         <h2>Live Audio</h2>
@@ -230,6 +247,29 @@ function saveConfig(e) {
         setTimeout(() => { status.textContent = ''; }, 5000);
     });
 }
+
+// Live tap detection monitor
+function updateTap() {
+    fetch('/api/tap')
+        .then(r => r.json())
+        .then(d => {
+            const maxAmp = Math.max(d.threshold * 5, 0.3);
+            const pct = Math.min((d.amplitude / maxAmp) * 100, 100);
+            const thrPct = Math.min((d.threshold / maxAmp) * 100, 100);
+            const bar = document.getElementById('tap-bar');
+            bar.style.width = pct + '%';
+            bar.style.background = d.state === 'NOISY' ? '#ef4444' : '#22c55e';
+            document.getElementById('tap-threshold-line').style.left = thrPct + '%';
+            document.getElementById('tap-amp').textContent = d.amplitude.toFixed(4);
+            document.getElementById('tap-thr').textContent = d.threshold.toFixed(4);
+            document.getElementById('tap-clicks').textContent = d.clicks;
+            document.getElementById('tap-last').textContent = d.last_tap;
+            const stateEl = document.getElementById('tap-state');
+            stateEl.textContent = d.state === 'NOISY' ? 'SIGNAL' : 'idle';
+            stateEl.style.color = d.state === 'NOISY' ? '#ef4444' : '#22c55e';
+        }).catch(() => {});
+}
+setInterval(updateTap, 200);
 
 // Auto-refresh weather every 60s
 setInterval(updateWeather, 60000);

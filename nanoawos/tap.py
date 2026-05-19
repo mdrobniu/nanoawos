@@ -164,8 +164,33 @@ class ClickDetector:
             log.debug("Ignoring %d clicks (not %d or %d)",
                       count, self.short_clicks, self.long_clicks)
 
+    def _write_debug(self, amplitude, is_noisy):
+        """Write live tap debug data to /tmp/tap_debug for web UI."""
+        try:
+            state = "NOISY" if is_noisy else "quiet"
+            with open("/tmp/tap_debug", "w") as f:
+                f.write(f"{amplitude:.6f} {self.threshold:.6f} "
+                        f"{self.click_count} {self.noisy_count} "
+                        f"{self.quiet_count} {state}")
+        except Exception:
+            pass
+
     def listen(self):
         """Process one audio block. Call in a loop."""
+        # Pause click counting during playback to avoid false triggers
+        if self._is_transmitting():
+            # Drain the audio buffer but don't process
+            try:
+                self.stream.read(INPUT_FRAMES_PER_BLOCK, exception_on_overflow=False)
+            except IOError:
+                pass
+            # Reset state so we start fresh after playback
+            self.noisy_count = 0
+            self.quiet_count = 0
+            self.click_count = 0
+            self._write_debug(0.0, False)
+            return
+
         try:
             block = self.stream.read(INPUT_FRAMES_PER_BLOCK, exception_on_overflow=False)
         except IOError as e:
@@ -180,6 +205,7 @@ class ClickDetector:
             # Noisy block (radio signal)
             self.quiet_count = 0
             self.noisy_count += 1
+            self._write_debug(amplitude, True)
         else:
             # Quiet block
             self.quiet_count += 1
@@ -192,6 +218,7 @@ class ClickDetector:
                 self.click_count = 0
 
             self.noisy_count = 0
+            self._write_debug(amplitude, False)
 
     def close(self):
         if self.stream:
