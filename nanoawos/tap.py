@@ -58,36 +58,31 @@ class ClickDetector:
         self.error_count = 0
 
     def find_input_device(self):
-        """Find the best audio input device."""
-        device_index = None
+        """Find the best audio input device.
 
+        Uses the ALSA 'default' device (dsnoop via asound.conf) for shared
+        access with DarkIce. If a specific device_name is configured, uses that.
+        """
+        # If a specific device name is configured, find it
+        if self.device_name:
+            for i in range(self.pa.get_device_count()):
+                devinfo = self.pa.get_device_info_by_index(i)
+                name = devinfo.get("name", "")
+                if self.device_name.lower() in name.lower() and devinfo.get("maxInputChannels", 0) > 0:
+                    log.info("Found configured device: %d - %s", i, name)
+                    return i
+
+        # Use the default device (dsnoop shared capture via asound.conf)
+        # This allows both tap detector and DarkIce to share the mic
         for i in range(self.pa.get_device_count()):
             devinfo = self.pa.get_device_info_by_index(i)
-            name = devinfo.get("name", "")
-            max_inputs = devinfo.get("maxInputChannels", 0)
-            log.debug("Device %d: %s (inputs=%d)", i, name, max_inputs)
-
-            if max_inputs <= 0:
-                continue
-
-            # If a specific device name is configured, match it
-            if self.device_name and self.device_name.lower() in name.lower():
-                log.info("Found configured device: %d - %s", i, name)
+            if devinfo.get("name", "") == "default" and devinfo.get("maxInputChannels", 0) > 0:
+                log.info("Using default (dsnoop) device: %d", i)
                 return i
 
-            # Otherwise look for mic/input keywords
-            for keyword in ["mic", "input", "codec"]:
-                if keyword in name.lower():
-                    log.info("Found input device: %d - %s", i, name)
-                    device_index = i
-                    break
-
-        if device_index is None:
-            # Fall back to default
-            log.warning("No preferred input found, using default")
-            device_index = self.pa.get_default_input_device_info()["index"]
-
-        return device_index
+        # Last resort
+        log.warning("default device not found, using PyAudio default")
+        return self.pa.get_default_input_device_info()["index"]
 
     def open_stream(self):
         """Open the audio input stream."""
