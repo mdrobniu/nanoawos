@@ -27,10 +27,10 @@ tap:
   calibration_seconds: 3
   device_name: ""
   # Timing constraints (ms) for debounced state machine
-  min_click_ms: 30       # Reject noise spikes shorter than this
-  max_click_ms: 1500     # Reject voice/continuous signal longer than this
-  min_gap_ms: 80         # Minimum silence between clicks (debounce)
-  max_gap_ms: 2000       # Timeout: sequence complete after this silence
+  min_click_ms: 50       # Reject noise spikes shorter than this
+  max_click_ms: 2000     # Reject voice/continuous signal longer than this
+  min_gap_ms: 150        # Minimum silence between clicks (debounce)
+  max_gap_ms: 2500       # Timeout: sequence complete after this silence
 
 mqtt:
   enabled: false

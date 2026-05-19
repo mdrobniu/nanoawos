@@ -52,8 +52,15 @@ class NoiseFloorTracker:
             self.estimate += self.alpha_rise * (energy - self.estimate)
         return self.estimate
 
-    def thresholds(self, high_mult=6.0, low_mult=3.0, minimum=500):
-        """Return Schmitt trigger thresholds relative to noise floor."""
+    def thresholds(self, high_mult=50.0, low_mult=10.0, minimum=500):
+        """Return Schmitt trigger thresholds relative to noise floor.
+
+        With measured noise ~172K and click energy ~100M+, the decay tail
+        after a click settles through 350K->200K over ~600ms. Thresholds
+        must be well above this decay zone:
+          t_high = 50x noise (~8.6M) -- only real clicks exceed this
+          t_low  = 10x noise (~1.7M) -- above the entire decay tail
+        """
         t_high = max(self.estimate * high_mult, minimum)
         t_low = max(self.estimate * low_mult, minimum * 0.5)
         return t_high, t_low
