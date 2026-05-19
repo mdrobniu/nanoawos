@@ -1,12 +1,12 @@
 station:
-  id: "IGIYN1"
-  icao: "EPMY"
-  name: "echo papa mike yankee"
+  id: "YOUR_STATION_ID"
+  icao: "XXXX"
+  name: "your station name"
   elevation_ft: 230
   runways: [15, 33]
 
 weather:
-  api_key: "23bb5436fdd34fe6bb5436fdd30fe6d5"
+  api_key: ""
   update_interval_sec: 300
   api_url: "https://api.weather.com/v2/pws/observations/current"
 
@@ -16,7 +16,7 @@ tts:
   output_dir: "/mnt/p4"
 
 audio:
-  mpd_host: "10.121.10.158"
+  mpd_host: "localhost"
   mpd_port: 6600
   gpio_pin: 201
   alsa_device: "hw:2,0"
@@ -32,7 +32,7 @@ tap:
 
 mqtt:
   enabled: false
-  broker: "10.121.10.64"
+  broker: "localhost"
   port: 1883
 
 web:
@@ -55,4 +55,4 @@ transcribe:
   max_log_entries: 200
   extract_actions: true
   action_model: "gpt-4o-mini"
-  action_prompt: "You are an aviation radio communications analyst at a small uncontrolled airfield EPMY (Mysliborz, Poland). Pilots may speak English or Polish. Extract actionable items from this radio transmission. Always reply in English. Be brief. If nothing actionable, reply with just 'No action'. Actionable means: aircraft position reports, landing/takeoff intentions, emergency calls, requests, circuit/pattern announcements."
+  action_prompt: "You are an aviation radio communications analyst at a small uncontrolled airfield. Extract actionable items from this pilot radio transmission. Always reply in English. Be brief. If nothing actionable, reply with just 'No action'. Actionable means: aircraft position reports, landing/takeoff intentions, emergency calls, requests, circuit/pattern announcements."

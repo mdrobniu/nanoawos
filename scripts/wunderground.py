@@ -11,14 +11,14 @@ path = "/usr/local/tts/"
 
 wu = WUndergroundAPI(
     api_key='',
-    default_station_id='IGIYN1',
+    default_station_id='YOUR_STATION_ID',
     units=units.METRIC_UNITS,
 )
 metric=wu.current()['observations'][0]
 
 wu = WUndergroundAPI(
     api_key='',
-    default_station_id='IGIYN1',
+    default_station_id='YOUR_STATION_ID',
     units=units.ENGLISH_UNITS,
 )
 english=wu.current()['observations'][0]
@@ -37,7 +37,7 @@ if english['imperial']['windGust'] > english['imperial']['windSpeed']:
 print(time_hour)
 print(json.dumps(metric,indent=5))
 #f = open("/tmp/metar","w")
-#f.write("EPMY "+time_hour+" "+wind+" "+windSpeed+windGusts[1]+" "+str(metric['metric']['temp'])+"/"+str(metric['metric']['dewpt'])+" Q"+str(metric['metric']['pressure']))
+#f.write("XXXX "+time_hour+" "+wind+" "+windSpeed+windGusts[1]+" "+str(metric['metric']['temp'])+"/"+str(metric['metric']['dewpt'])+" Q"+str(metric['metric']['pressure']))
 #f.close()
 
 part1 = [

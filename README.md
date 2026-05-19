@@ -263,8 +263,8 @@ All settings in `/opt/nanoawos/config/nanoawos.yaml` (or via web UI at `:8080`):
 
 ```yaml
 station:
-  id: "IGIYN1"              # Weather Underground station ID
-  icao: "EPMY"              # ICAO airport code
+  id: "YOUR_STATION_ID"      # Weather Underground station ID
+  icao: "XXXX"              # ICAO airport code
   name: "echo papa mike yankee"  # Spoken station identification
   elevation_ft: 230         # Field elevation (for density altitude)
   runways: [15, 33]         # Runway headings (for wind recommendation)
