@@ -50,6 +50,14 @@ legend { color: #94a3b8; font-size: 0.85rem; padding: 0 0.5rem; }
 .tap-info { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; color: #94a3b8; }
 .tap-info strong { color: #e2e8f0; font-family: "JetBrains Mono", monospace; }
 
+.tx-log { max-height: 400px; overflow-y: auto; }
+.tx-entry { background: #0f172a; border-radius: 6px; padding: 0.6rem 0.75rem; margin-bottom: 0.5rem; border-left: 3px solid #334155; }
+.tx-header { display: flex; justify-content: space-between; margin-bottom: 0.25rem; }
+.tx-time { font-size: 0.75rem; color: #64748b; font-family: "JetBrains Mono", monospace; }
+.tx-dur { font-size: 0.75rem; color: #64748b; }
+.tx-text { color: #e2e8f0; font-size: 0.9rem; }
+.tx-action { margin-top: 0.35rem; padding: 0.3rem 0.5rem; background: #1a2744; border-radius: 4px; color: #f59e0b; font-size: 0.85rem; border-left: 2px solid #f59e0b; }
+
 @media (max-width: 600px) {
     .weather-grid { grid-template-columns: 1fr; }
     .form-row { flex-direction: column; align-items: flex-start; gap: 0.25rem; }

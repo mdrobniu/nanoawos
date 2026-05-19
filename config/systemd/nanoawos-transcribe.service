@@ -1,0 +1,16 @@
+[Unit]
+Description=NanoAWOS Radio Transcription Service
+After=multi-user.target mpd.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+ExecStart=/usr/bin/python3 -m nanoawos.transcribe
+WorkingDirectory=/opt/nanoawos
+Environment=PYTHONPATH=/opt/nanoawos
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

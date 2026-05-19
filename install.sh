@@ -41,7 +41,8 @@ fi
 # --- Install systemd services ---
 echo "[4/7] Installing systemd services..."
 for svc in nanoawos-weather.service nanoawos-weather.timer \
-           nanoawos-tap.service nanoawos-gpio.service nanoawos-web.service; do
+           nanoawos-tap.service nanoawos-gpio.service nanoawos-web.service \
+           nanoawos-transcribe.service; do
     cp "$INSTALL_DIR/config/systemd/$svc" "/etc/systemd/system/$svc"
     echo "  Installed $svc"
 done

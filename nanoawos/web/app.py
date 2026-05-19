@@ -94,6 +94,18 @@ def api_play(name):
     return jsonify({"status": "playing", "playlist": name})
 
 
+@app.route("/api/transcriptions")
+def api_transcriptions():
+    """Return recent transcriptions."""
+    log_file = "/tmp/nanoawos_transcriptions.json"
+    try:
+        with open(log_file) as f:
+            entries = json.load(f)
+        return jsonify(entries[-50:])  # Last 50
+    except (FileNotFoundError, json.JSONDecodeError):
+        return jsonify([])
+
+
 @app.route("/api/tap")
 def api_tap():
     """Live tap detector debug data."""
