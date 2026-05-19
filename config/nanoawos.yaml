@@ -22,13 +22,15 @@ audio:
   alsa_device: "hw:2,0"
 
 tap:
-  amplitude_threshold: 0.2
-  quiet_blocks: 25
-  noisy_min_blocks: 1
   short_clicks: 4
   long_clicks: 6
-  calibration_seconds: 2
+  calibration_seconds: 3
   device_name: ""
+  # Timing constraints (ms) for debounced state machine
+  min_click_ms: 30       # Reject noise spikes shorter than this
+  max_click_ms: 1500     # Reject voice/continuous signal longer than this
+  min_gap_ms: 80         # Minimum silence between clicks (debounce)
+  max_gap_ms: 2000       # Timeout: sequence complete after this silence
 
 mqtt:
   enabled: false

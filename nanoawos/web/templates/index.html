@@ -160,20 +160,28 @@
             <fieldset>
                 <legend>Click Detection</legend>
                 <div class="form-row">
-                    <label>Amplitude Threshold</label>
-                    <input name="tap.amplitude_threshold" type="number" step="0.01" value="{{ cfg.tap.amplitude_threshold }}">
-                </div>
-                <div class="form-row">
-                    <label>Quiet Blocks</label>
-                    <input name="tap.quiet_blocks" type="number" value="{{ cfg.tap.quiet_blocks }}">
-                </div>
-                <div class="form-row">
                     <label>Short Clicks (wind)</label>
                     <input name="tap.short_clicks" type="number" value="{{ cfg.tap.short_clicks }}">
                 </div>
                 <div class="form-row">
                     <label>Long Clicks (full)</label>
                     <input name="tap.long_clicks" type="number" value="{{ cfg.tap.long_clicks }}">
+                </div>
+                <div class="form-row">
+                    <label>Min Click (ms)</label>
+                    <input name="tap.min_click_ms" type="number" value="{{ cfg.tap.get('min_click_ms', 30) }}">
+                </div>
+                <div class="form-row">
+                    <label>Max Click (ms)</label>
+                    <input name="tap.max_click_ms" type="number" value="{{ cfg.tap.get('max_click_ms', 1500) }}">
+                </div>
+                <div class="form-row">
+                    <label>Min Gap (ms)</label>
+                    <input name="tap.min_gap_ms" type="number" value="{{ cfg.tap.get('min_gap_ms', 80) }}">
+                </div>
+                <div class="form-row">
+                    <label>Sequence Timeout (ms)</label>
+                    <input name="tap.max_gap_ms" type="number" value="{{ cfg.tap.get('max_gap_ms', 2000) }}">
                 </div>
                 <div class="form-row">
                     <label>Calibration (sec)</label>
