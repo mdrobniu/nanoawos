@@ -119,13 +119,21 @@ class TranscriptionService:
         return buf.getvalue()
 
     def _transcribe_audio(self, wav_bytes):
-        """Send WAV to OpenAI Whisper API, return transcription text."""
+        """Send WAV to OpenAI Whisper API, return transcription text.
+
+        If language is "auto" or empty, Whisper auto-detects the language.
+        Supports mixed English/Polish radio communications.
+        """
         try:
+            data = {"model": self.model}
+            # Only set language if explicitly configured (not "auto" or empty)
+            if self.language and self.language != "auto":
+                data["language"] = self.language
             resp = requests.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 files={"file": ("radio.wav", wav_bytes, "audio/wav")},
-                data={"model": self.model, "language": self.language},
+                data=data,
                 timeout=30,
             )
             resp.raise_for_status()

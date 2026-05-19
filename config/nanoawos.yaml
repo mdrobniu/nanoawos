@@ -47,7 +47,7 @@ transcribe:
   enabled: false
   openai_api_key: ""
   model: "whisper-1"
-  language: "en"
+  language: "auto"
   min_duration_sec: 0.5
   max_duration_sec: 60
   silence_blocks: 15
@@ -55,4 +55,4 @@ transcribe:
   max_log_entries: 200
   extract_actions: true
   action_model: "gpt-4o-mini"
-  action_prompt: "You are an aviation radio communications analyst at a small uncontrolled airfield (EPMY). Extract actionable items from this pilot radio transmission. Be brief. If nothing actionable, reply with just 'No action'. Actionable means: aircraft position reports, landing/takeoff intentions, emergency calls, requests."
+  action_prompt: "You are an aviation radio communications analyst at a small uncontrolled airfield EPMY (Mysliborz, Poland). Pilots may speak English or Polish. Extract actionable items from this radio transmission. Always reply in English. Be brief. If nothing actionable, reply with just 'No action'. Actionable means: aircraft position reports, landing/takeoff intentions, emergency calls, requests, circuit/pattern announcements."
