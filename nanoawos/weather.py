@@ -27,6 +27,7 @@ class WeatherData:
     density_alt_ft: int = 0
     recommended_runway: int = 0
     has_gusts: bool = False
+    temp_available: bool = False
     data_valid: bool = False
 
 
@@ -90,15 +91,17 @@ def fetch_weather(cfg=None):
     wd.dewpt_c = metric.get("metric", {}).get("dewpt")
     wd.pressure_hpa = metric.get("metric", {}).get("pressure") or 1013.0
 
-    # Handle None temp/dewpt - use 15/5 as safe defaults
-    if wd.temp_c is None:
-        log.warning("Temperature is None from API, using 15C default")
-        wd.temp_c = 15.0
-    if wd.dewpt_c is None:
-        log.warning("Dewpoint is None from API, using 5C default")
-        wd.dewpt_c = 5.0
+    # Check if temp/dewpt are available
+    if wd.temp_c is not None and wd.dewpt_c is not None:
+        wd.temp_available = True
+    else:
+        log.warning("Temperature/dewpoint unavailable from station")
+        if wd.temp_c is None:
+            wd.temp_c = 0.0
+        if wd.dewpt_c is None:
+            wd.dewpt_c = 0.0
 
-    # Density altitude calculation
+    # Density altitude calculation (only meaningful with real temp)
     elevation = cfg["station"]["elevation_ft"]
     pressure_alt = elevation + (1013 - wd.pressure_hpa) * 30
     standard_temp = 15 - (2 * (elevation / 1000))
@@ -147,13 +150,16 @@ def build_announcement_text(wd, cfg=None):
     parts.append(",")
 
     # Temperature
-    temp_str = str(int(wd.temp_c))
-    dewpt_str = str(int(wd.dewpt_c))
-    parts.append("temperature")
-    parts.append(" ".join(list(temp_str)))
-    parts.append("dewpoint")
-    parts.append(" ".join(list(dewpt_str)))
-    parts.append(",")
+    if wd.temp_available:
+        temp_str = str(int(wd.temp_c))
+        dewpt_str = str(int(wd.dewpt_c))
+        parts.append("temperature")
+        parts.append(" ".join(list(temp_str)))
+        parts.append("dewpoint")
+        parts.append(" ".join(list(dewpt_str)))
+        parts.append(",")
+    else:
+        parts.append("temperature unavailable,")
 
     # QNH
     qnh = str(math.ceil(wd.pressure_hpa))
@@ -161,8 +167,8 @@ def build_announcement_text(wd, cfg=None):
     parts.append(" ".join(list(qnh)))
     parts.append(",")
 
-    # Density altitude (only if above 2000ft)
-    if wd.density_alt_ft > 2000:
+    # Density altitude (only if above 2000ft and temp available)
+    if wd.temp_available and wd.density_alt_ft > 2000:
         parts.append("density altitude")
         parts.append(str(wd.density_alt_ft))
         parts.append("feet")
@@ -201,10 +207,16 @@ def write_metar_files(wd, cfg=None):
         f.write(wind_str)
 
     with open("/tmp/metar3", "w") as f:
-        f.write(f"{int(wd.temp_c)}/{int(wd.dewpt_c)} Q{wd.pressure_hpa}")
+        if wd.temp_available:
+            f.write(f"{int(wd.temp_c)}/{int(wd.dewpt_c)} Q{wd.pressure_hpa}")
+        else:
+            f.write(f"--/-- Q{wd.pressure_hpa}")
 
     with open("/tmp/metar4", "w") as f:
-        f.write(f"DA{wd.density_alt_ft}FT")
+        if wd.temp_available:
+            f.write(f"DA{wd.density_alt_ft}FT")
+        else:
+            f.write("TEMP N/A")
 
 
 def main():
