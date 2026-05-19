@@ -49,11 +49,42 @@
                 <div class="tap-bar" id="tap-bar"></div>
                 <div class="tap-threshold" id="tap-threshold-line"></div>
             </div>
-            <div class="tap-info">
-                <span>Amplitude: <strong id="tap-amp">0.000</strong></span>
-                <span>Threshold: <strong id="tap-thr">0.000</strong></span>
-                <span>Clicks: <strong id="tap-clicks">0</strong></span>
-                <span>Last Tap: <strong id="tap-last">0</strong></span>
+            <div class="tap-stats">
+                <div class="tap-stat">
+                    <label>Energy</label>
+                    <span id="tap-energy">0</span>
+                </div>
+                <div class="tap-stat">
+                    <label>Noise Floor</label>
+                    <span id="tap-noise">0</span>
+                </div>
+                <div class="tap-stat">
+                    <label>T-High</label>
+                    <span id="tap-thigh">0</span>
+                </div>
+                <div class="tap-stat">
+                    <label>T-Low</label>
+                    <span id="tap-tlow">0</span>
+                </div>
+                <div class="tap-stat">
+                    <label>Clicks</label>
+                    <span id="tap-clicks">0</span>
+                </div>
+                <div class="tap-stat">
+                    <label>Last Tap</label>
+                    <span id="tap-last">0</span>
+                </div>
+            </div>
+            <div class="tap-profile">
+                <div class="tap-profile-info">
+                    <span>Self-Learning: <strong id="tap-mode">initializing</strong></span>
+                    <span>Samples: <strong id="tap-samples">0</strong></span>
+                </div>
+                <div class="actions" style="margin-top:0.5rem">
+                    <button onclick="startCalibration()" class="btn btn-outline" id="cal-btn">Calibrate (5 clicks)</button>
+                    <button onclick="clearProfile()" class="btn btn-outline">Reset Profile</button>
+                </div>
+                <p class="hint" id="cal-hint"></p>
             </div>
         </div>
     </section>
@@ -186,6 +217,14 @@
                 <div class="form-row">
                     <label>Calibration (sec)</label>
                     <input name="tap.calibration_seconds" type="number" value="{{ cfg.tap.calibration_seconds }}">
+                </div>
+                <div class="form-row">
+                    <label>Fallback High Mult</label>
+                    <input name="tap.high_mult" type="number" step="1" value="{{ cfg.tap.get('high_mult', 50) }}">
+                </div>
+                <div class="form-row">
+                    <label>Fallback Low Mult</label>
+                    <input name="tap.low_mult" type="number" step="1" value="{{ cfg.tap.get('low_mult', 10) }}">
                 </div>
             </fieldset>
 
@@ -326,25 +365,64 @@ function updateTranscriptions() {
 setInterval(updateTranscriptions, 3000);
 updateTranscriptions();
 
+// Calibration controls
+function startCalibration() {
+    if (!confirm('Start calibration? Press PTT 5 times with normal click patterns. Each pattern will be recorded.')) return;
+    fetch('/api/tap/calibrate', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({clicks: 5})})
+        .then(r => r.json()).then(() => {
+            document.getElementById('cal-hint').textContent = 'Calibrating... Press PTT in your normal click pattern 5 times.';
+            document.getElementById('cal-btn').disabled = true;
+        });
+}
+function clearProfile() {
+    if (!confirm('Reset self-learned profile? The system will re-learn from scratch.')) return;
+    fetch('/api/tap/profile', {method: 'DELETE'}).then(() => {
+        document.getElementById('tap-samples').textContent = '0';
+        document.getElementById('tap-mode').textContent = 'learning...';
+    });
+}
+
 // Live tap detection monitor
+function fmtEnergy(e) {
+    if (e > 1e9) return (e/1e9).toFixed(1) + 'G';
+    if (e > 1e6) return (e/1e6).toFixed(1) + 'M';
+    if (e > 1e3) return (e/1e3).toFixed(0) + 'K';
+    return e;
+}
 function updateTap() {
     fetch('/api/tap')
         .then(r => r.json())
         .then(d => {
-            const maxAmp = Math.max(d.threshold * 5, 0.3);
-            const pct = Math.min((d.amplitude / maxAmp) * 100, 100);
-            const thrPct = Math.min((d.threshold / maxAmp) * 100, 100);
+            const pct = Math.min(d.amplitude * 100 / 0.5, 100);
             const bar = document.getElementById('tap-bar');
             bar.style.width = pct + '%';
             bar.style.background = d.state === 'NOISY' ? '#ef4444' : '#22c55e';
-            document.getElementById('tap-threshold-line').style.left = thrPct + '%';
-            document.getElementById('tap-amp').textContent = d.amplitude.toFixed(4);
-            document.getElementById('tap-thr').textContent = d.threshold.toFixed(4);
+            document.getElementById('tap-threshold-line').style.left = '50%';
+            document.getElementById('tap-energy').textContent = fmtEnergy(d.energy || 0);
+            document.getElementById('tap-noise').textContent = fmtEnergy(d.noise_floor || 0);
+            document.getElementById('tap-thigh').textContent = fmtEnergy(d.t_high || 0);
+            document.getElementById('tap-tlow').textContent = fmtEnergy(d.t_low || 0);
             document.getElementById('tap-clicks').textContent = d.clicks;
             document.getElementById('tap-last').textContent = d.last_tap;
+            document.getElementById('tap-samples').textContent = d.profile_samples || 0;
             const stateEl = document.getElementById('tap-state');
-            stateEl.textContent = d.state === 'NOISY' ? 'SIGNAL' : 'idle';
-            stateEl.style.color = d.state === 'NOISY' ? '#ef4444' : '#22c55e';
+            if (d.calibrating) {
+                stateEl.textContent = 'CALIBRATING';
+                stateEl.style.color = '#f59e0b';
+                document.getElementById('cal-hint').textContent = 'Click PTT patterns now...';
+            } else {
+                stateEl.textContent = d.state === 'NOISY' ? 'SIGNAL' : 'idle';
+                stateEl.style.color = d.state === 'NOISY' ? '#ef4444' : '#22c55e';
+                document.getElementById('cal-btn').disabled = false;
+                if (d.auto_tuning) {
+                    document.getElementById('tap-mode').textContent = 'auto-tuned (' + d.profile_samples + ' samples)';
+                    document.getElementById('tap-mode').style.color = '#22c55e';
+                    document.getElementById('cal-hint').textContent = '';
+                } else {
+                    document.getElementById('tap-mode').textContent = 'learning... (' + d.profile_samples + '/5)';
+                    document.getElementById('tap-mode').style.color = '#f59e0b';
+                }
+            }
         }).catch(() => {});
 }
 setInterval(updateTap, 200);

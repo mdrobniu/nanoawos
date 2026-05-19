@@ -3,15 +3,32 @@
 Listens to the radio audio input and counts PTT button clicks.
 4 clicks -> wind only, 6 clicks -> full weather report.
 
-Detection pipeline (based on FAA Pilot-Controlled Lighting approach):
-  1. Integer energy computation per audio frame (no float math)
+Detection pipeline:
+  1. Integer energy computation per audio frame
   2. Adaptive noise floor tracking (asymmetric EMA)
-  3. Schmitt trigger with hysteresis (dual threshold, prevents toggling)
-  4. Debounced state machine with timing constraints (rejects noise spikes,
-     voice transmissions, and split-click artifacts)
+  3. Schmitt trigger with hysteresis (dual threshold)
+  4. Debounced state machine with timing constraints
+  5. Self-learning: tracks click energy statistics to auto-tune thresholds
+
+Self-learning algorithm:
+  - Records energy of every confirmed click (passed all timing checks)
+  - Maintains running statistics: min, max, mean, stddev of click energies
+  - After enough samples (10+), auto-computes optimal threshold multipliers
+  - Sets t_high = midpoint between noise floor and weakest observed click
+  - Sets t_low = noise_floor * 3 (just above the decay tail)
+  - Persists learned profile to /tmp/nanoawos_click_profile.json
+  - Reloads on restart so learning survives reboots
+  - Web UI shows calibration mode + learned stats
+
+Calibration mode (triggered via web API):
+  - Records next N clicks as calibration samples
+  - Uses those to establish the profile from scratch
+  - Good for new radio setups or volume changes
 """
 
+import json
 import logging
+import math
 import os
 import signal
 import struct
@@ -29,13 +46,12 @@ CHANNELS = 1
 RATE = 44100
 FRAME_SAMPLES = 2205  # 50ms at 44100Hz
 
+PROFILE_PATH = "/tmp/nanoawos_click_profile.json"
+CALIBRATION_FLAG = "/tmp/nanoawos_calibrate"
+
 
 class NoiseFloorTracker:
-    """Adaptive noise floor estimator using asymmetric exponential moving average.
-
-    Tracks the minimum energy level (noise floor) by falling quickly when
-    energy drops but rising slowly during signal-present periods.
-    """
+    """Adaptive noise floor estimator using asymmetric EMA."""
 
     def __init__(self, alpha_rise=0.001, alpha_fall=0.05):
         self.alpha_rise = alpha_rise
@@ -52,27 +68,109 @@ class NoiseFloorTracker:
             self.estimate += self.alpha_rise * (energy - self.estimate)
         return self.estimate
 
-    def thresholds(self, high_mult=50.0, low_mult=10.0, minimum=500):
-        """Return Schmitt trigger thresholds relative to noise floor.
 
-        With measured noise ~172K and click energy ~100M+, the decay tail
-        after a click settles through 350K->200K over ~600ms. Thresholds
-        must be well above this decay zone:
-          t_high = 50x noise (~8.6M) -- only real clicks exceed this
-          t_low  = 10x noise (~1.7M) -- above the entire decay tail
+class ClickProfile:
+    """Self-learning click energy profiler.
+
+    Tracks statistics of confirmed click energies to auto-tune thresholds.
+    """
+
+    def __init__(self):
+        self.click_energies = []  # Peak energy of each confirmed click
+        self.click_durations = []  # Duration of each click in ms
+        self.max_samples = 100  # Rolling window
+        self.min_samples_for_auto = 5  # Need this many to auto-tune
+        self.load()
+
+    def record_click(self, peak_energy, duration_ms):
+        """Record a confirmed click's peak energy and duration."""
+        self.click_energies.append(peak_energy)
+        self.click_durations.append(duration_ms)
+        if len(self.click_energies) > self.max_samples:
+            self.click_energies = self.click_energies[-self.max_samples:]
+            self.click_durations = self.click_durations[-self.max_samples:]
+        self.save()
+
+    def has_enough_data(self):
+        return len(self.click_energies) >= self.min_samples_for_auto
+
+    def get_thresholds(self, noise_floor):
+        """Compute optimal thresholds from learned click profile.
+
+        Strategy: t_high = geometric mean of noise floor and weakest click.
+        This puts the threshold halfway (on a log scale) between noise
+        and the weakest real signal, maximizing margin on both sides.
+        t_low = 3x noise floor (above decay tail).
         """
-        t_high = max(self.estimate * high_mult, minimum)
-        t_low = max(self.estimate * low_mult, minimum * 0.5)
+        if not self.has_enough_data() or noise_floor <= 0:
+            return None, None
+
+        min_click = min(self.click_energies)
+        mean_click = sum(self.click_energies) / len(self.click_energies)
+
+        # Use 5th percentile as the "weakest expected click"
+        sorted_e = sorted(self.click_energies)
+        p5_idx = max(0, len(sorted_e) // 20)
+        weakest = sorted_e[p5_idx]
+
+        # Geometric mean between noise and weakest click
+        t_high = math.sqrt(noise_floor * weakest)
+        # Low threshold: 3x noise or 10% of weakest click
+        t_low = max(noise_floor * 3, weakest * 0.1)
+        # Ensure t_low < t_high
+        if t_low >= t_high:
+            t_low = t_high * 0.5
+
         return t_high, t_low
+
+    def get_stats(self):
+        """Return profile statistics for web UI."""
+        if not self.click_energies:
+            return {"samples": 0}
+        energies = self.click_energies
+        durations = self.click_durations or [0]
+        return {
+            "samples": len(energies),
+            "min_energy": min(energies),
+            "max_energy": max(energies),
+            "mean_energy": int(sum(energies) / len(energies)),
+            "min_duration_ms": round(min(durations), 0),
+            "max_duration_ms": round(max(durations), 0),
+            "mean_duration_ms": round(sum(durations) / len(durations), 0),
+            "auto_tuning": self.has_enough_data(),
+        }
+
+    def save(self):
+        try:
+            with open(PROFILE_PATH, "w") as f:
+                json.dump({
+                    "click_energies": self.click_energies[-self.max_samples:],
+                    "click_durations": self.click_durations[-self.max_samples:],
+                }, f)
+        except Exception:
+            pass
+
+    def load(self):
+        try:
+            with open(PROFILE_PATH) as f:
+                data = json.load(f)
+            self.click_energies = data.get("click_energies", [])
+            self.click_durations = data.get("click_durations", [])
+            if self.click_energies:
+                log.info("Loaded click profile: %d samples, energy range %d-%d",
+                         len(self.click_energies),
+                         min(self.click_energies), max(self.click_energies))
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def clear(self):
+        self.click_energies = []
+        self.click_durations = []
+        self.save()
 
 
 class SchmittTrigger:
-    """Software Schmitt trigger with hysteresis.
-
-    Requires energy to exceed t_high to activate, and fall below t_low
-    to deactivate. The gap between thresholds prevents rapid toggling
-    when energy hovers near a single threshold.
-    """
+    """Software Schmitt trigger with hysteresis."""
 
     def __init__(self):
         self.active = False
@@ -86,18 +184,10 @@ class SchmittTrigger:
 
 
 class ClickStateMachine:
-    """Debounced click counter using a timing-constrained state machine.
+    """Debounced click counter with timing constraints."""
 
-    States: IDLE -> ACTIVE -> GAP -> (back to ACTIVE or EMIT)
-
-    Timing constraints reject:
-      - Noise spikes (duration < min_click_ms)
-      - Voice transmissions (duration > max_click_ms)
-      - Contact bounce (gap < min_gap_ms)
-    """
-
-    def __init__(self, min_click_ms=30, max_click_ms=1500,
-                 min_gap_ms=80, max_gap_ms=2000):
+    def __init__(self, min_click_ms=50, max_click_ms=2000,
+                 min_gap_ms=150, max_gap_ms=2500):
         self.min_click = min_click_ms / 1000.0
         self.max_click = max_click_ms / 1000.0
         self.min_gap = min_gap_ms / 1000.0
@@ -107,67 +197,71 @@ class ClickStateMachine:
         self.click_count = 0
         self.active_start = 0.0
         self.gap_start = 0.0
+        self.peak_energy = 0  # Track peak energy of current click
 
-    def update(self, is_active, now):
-        """Feed Schmitt trigger output. Returns click count when sequence ends, else 0."""
+    def update(self, is_active, now, energy=0):
+        """Returns (click_count, peak_energy, duration_ms) when sequence ends."""
         if self.state == "IDLE":
             if is_active:
                 self.state = "ACTIVE"
                 self.active_start = now
                 self.click_count = 0
-            return 0
+                self.peak_energy = energy
+                self._click_peaks = []
+                self._click_durs = []
+            return 0, 0, 0
 
         elif self.state == "ACTIVE":
+            self.peak_energy = max(self.peak_energy, energy)
             if not is_active:
-                # Falling edge: click ended
                 dur = now - self.active_start
                 if self.min_click <= dur <= self.max_click:
                     self.click_count += 1
+                    self._click_peaks.append(self.peak_energy)
+                    self._click_durs.append(dur * 1000)
                     self.state = "GAP"
                     self.gap_start = now
                 elif dur > self.max_click:
-                    # Too long - voice or continuous signal, discard
-                    log.debug("Rejected: duration %.0fms > max %dms",
-                              dur * 1000, self.max_click * 1000)
                     self.state = "IDLE"
                 else:
-                    # Too short - noise spike, discard
-                    log.debug("Rejected: duration %.0fms < min %dms",
-                              dur * 1000, self.min_click * 1000)
                     self.state = "IDLE"
+                self.peak_energy = 0
             elif (now - self.active_start) > self.max_click:
-                # Still active but exceeded max duration
                 self.state = "IDLE"
-            return 0
+            return 0, 0, 0
 
         elif self.state == "GAP":
             if is_active:
                 gap_dur = now - self.gap_start
                 if gap_dur >= self.min_gap:
-                    # Valid gap followed by new click
                     self.state = "ACTIVE"
                     self.active_start = now
-                # else: ignore, gap too short (bounce)
-                return 0
+                    self.peak_energy = energy
+                return 0, 0, 0
             else:
                 gap_dur = now - self.gap_start
                 if gap_dur >= self.max_gap:
-                    # Timeout: emit the count
                     count = self.click_count
+                    # Average peak energy and duration across clicks
+                    avg_peak = (sum(self._click_peaks) // len(self._click_peaks)
+                                if self._click_peaks else 0)
+                    avg_dur = (sum(self._click_durs) / len(self._click_durs)
+                               if self._click_durs else 0)
                     self.click_count = 0
                     self.state = "IDLE"
-                    return count
-                return 0
+                    return count, avg_peak, avg_dur
+                return 0, 0, 0
 
-        return 0
+        return 0, 0, 0
 
     def reset(self):
         self.state = "IDLE"
         self.click_count = 0
+        self.peak_energy = 0
 
 
 def frame_energy_int(block_bytes):
-    """Compute integer energy (mean of squared int16 samples). No float math."""
+    """Compute integer energy (mean of squared int16 samples)."""
     count = len(block_bytes) // 2
     if count == 0:
         return 0
@@ -187,41 +281,48 @@ class ClickDetector:
         self.calibration_seconds = tap_cfg.get("calibration_seconds", 3)
         self.device_name = tap_cfg.get("device_name", "")
 
-        # Detection pipeline components
+        # Fallback threshold multipliers (used before self-learning kicks in)
+        self.default_high_mult = tap_cfg.get("high_mult", 50.0)
+        self.default_low_mult = tap_cfg.get("low_mult", 10.0)
+
+        # Detection pipeline
         self.noise_floor = NoiseFloorTracker(alpha_rise=0.001, alpha_fall=0.05)
         self.schmitt = SchmittTrigger()
         self.state_machine = ClickStateMachine(
-            min_click_ms=tap_cfg.get("min_click_ms", 30),
-            max_click_ms=tap_cfg.get("max_click_ms", 1500),
-            min_gap_ms=tap_cfg.get("min_gap_ms", 80),
-            max_gap_ms=tap_cfg.get("max_gap_ms", 2000),
+            min_click_ms=tap_cfg.get("min_click_ms", 50),
+            max_click_ms=tap_cfg.get("max_click_ms", 2000),
+            min_gap_ms=tap_cfg.get("min_gap_ms", 150),
+            max_gap_ms=tap_cfg.get("max_gap_ms", 2500),
         )
+        self.profile = ClickProfile()
+
+        # Calibration mode
+        self.calibrating = False
+        self.cal_clicks_needed = 0
+        self.cal_clicks_done = 0
 
         # Audio
         self.pa = pyaudio.PyAudio()
         self.stream = None
         self.error_count = 0
 
-        # Debug state for web UI
+        # Debug state
         self._last_energy = 0
         self._last_t_high = 0
         self._last_t_low = 0
 
     def find_input_device(self):
-        """Find the best audio input device (ALSA default/dsnoop for shared access)."""
         if self.device_name:
             for i in range(self.pa.get_device_count()):
                 d = self.pa.get_device_info_by_index(i)
                 if self.device_name.lower() in d.get("name", "").lower() and d.get("maxInputChannels", 0) > 0:
                     log.info("Found configured device: %d - %s", i, d["name"])
                     return i
-
         for i in range(self.pa.get_device_count()):
             d = self.pa.get_device_info_by_index(i)
             if d.get("name", "") == "default" and d.get("maxInputChannels", 0) > 0:
                 log.info("Using default (dsnoop) device: %d", i)
                 return i
-
         log.warning("default device not found, using PyAudio default")
         return self.pa.get_default_input_device_info()["index"]
 
@@ -235,21 +336,48 @@ class ClickDetector:
         log.info("Audio stream opened on device %d", device_index)
 
     def calibrate(self):
-        """Seed the adaptive noise floor tracker with ambient noise samples."""
+        """Seed noise floor tracker."""
         log.info("Calibrating noise floor for %d seconds...", self.calibration_seconds)
         blocks = int(self.calibration_seconds / (FRAME_SAMPLES / RATE))
-
         for _ in range(blocks):
             try:
                 block = self.stream.read(FRAME_SAMPLES, exception_on_overflow=False)
-                energy = frame_energy_int(block)
-                self.noise_floor.update(energy)
+                self.noise_floor.update(frame_energy_int(block))
             except IOError:
                 pass
 
-        t_high, t_low = self.noise_floor.thresholds()
-        log.info("Calibration complete: noise_floor=%d, t_high=%d, t_low=%d",
-                 int(self.noise_floor.estimate), int(t_high), int(t_low))
+        t_high, t_low = self._get_thresholds()
+        mode = "learned" if self.profile.has_enough_data() else "default"
+        log.info("Calibration done: noise=%d t_high=%d t_low=%d [%s mode, %d samples]",
+                 int(self.noise_floor.estimate), int(t_high), int(t_low),
+                 mode, len(self.profile.click_energies))
+
+    def _get_thresholds(self):
+        """Get thresholds - learned if available, else default multipliers."""
+        nf = self.noise_floor.estimate
+        if self.profile.has_enough_data():
+            t_high, t_low = self.profile.get_thresholds(nf)
+            if t_high and t_low:
+                return t_high, t_low
+        # Fallback to configured multipliers
+        t_high = max(nf * self.default_high_mult, 500)
+        t_low = max(nf * self.default_low_mult, 250)
+        return t_high, t_low
+
+    def _check_calibration_mode(self):
+        """Check if calibration was requested via web API."""
+        if os.path.exists(CALIBRATION_FLAG):
+            try:
+                with open(CALIBRATION_FLAG) as f:
+                    n = int(f.read().strip())
+                os.unlink(CALIBRATION_FLAG)
+                self.profile.clear()
+                self.calibrating = True
+                self.cal_clicks_needed = n
+                self.cal_clicks_done = 0
+                log.info("Calibration mode: waiting for %d click sequences", n)
+            except Exception:
+                pass
 
     def _is_transmitting(self):
         try:
@@ -259,14 +387,34 @@ class ClickDetector:
         except Exception:
             return False
 
-    def _on_clicks_detected(self, count):
-        log.info("Detected %d clicks", count)
+    def _on_clicks_detected(self, count, avg_peak, avg_dur):
+        log.info("Detected %d clicks (peak_energy=%d, dur=%.0fms)",
+                 count, avg_peak, avg_dur)
 
+        # Always record to profile for self-learning (if it was a valid click)
+        if avg_peak > 0 and count > 0:
+            self.profile.record_click(avg_peak, avg_dur)
+            if self.profile.has_enough_data():
+                t_h, t_l = self.profile.get_thresholds(self.noise_floor.estimate)
+                log.debug("Auto-tuned: t_high=%d t_low=%d (from %d samples)",
+                          int(t_h), int(t_l), len(self.profile.click_energies))
+
+        # Write count to /tmp
         try:
             with open("/tmp/tap", "w") as f:
                 f.write(str(count))
         except Exception:
             pass
+
+        # In calibration mode, don't trigger playback
+        if self.calibrating:
+            self.cal_clicks_done += 1
+            log.info("Calibration: %d/%d sequences captured",
+                     self.cal_clicks_done, self.cal_clicks_needed)
+            if self.cal_clicks_done >= self.cal_clicks_needed:
+                self.calibrating = False
+                log.info("Calibration complete! Profile: %s", self.profile.get_stats())
+            return
 
         if self._is_transmitting():
             log.info("PTT active, skipping playback")
@@ -288,18 +436,22 @@ class ClickDetector:
             active = "NOISY" if self.schmitt.active else "quiet"
             sm = self.state_machine
             clicks = sm.click_count if sm.state != "IDLE" else 0
-            # Normalize energy to 0-1 range for display (divide by t_high * 2)
             norm = self._last_energy / max(self._last_t_high * 2, 1)
+            cal = "CAL" if self.calibrating else ""
+            stats = self.profile.get_stats()
             with open("/tmp/tap_debug", "w") as f:
                 f.write(f"{norm:.6f} {0.5:.6f} "
                         f"{clicks} {1 if self.schmitt.active else 0} "
-                        f"0 {active}")
+                        f"{stats.get('samples', 0)} {active} "
+                        f"{int(self.noise_floor.estimate)} "
+                        f"{int(self._last_t_high)} {int(self._last_t_low)} "
+                        f"{int(self._last_energy)} "
+                        f"{1 if self.profile.has_enough_data() else 0} "
+                        f"{cal}")
         except Exception:
             pass
 
     def listen(self):
-        """Process one audio frame through the full detection pipeline."""
-        # Pause during our own playback
         if self._is_transmitting():
             try:
                 self.stream.read(FRAME_SAMPLES, exception_on_overflow=False)
@@ -309,6 +461,9 @@ class ClickDetector:
             self._write_debug()
             return
 
+        # Check for calibration requests periodically
+        self._check_calibration_mode()
+
         try:
             block = self.stream.read(FRAME_SAMPLES, exception_on_overflow=False)
         except IOError as e:
@@ -317,24 +472,18 @@ class ClickDetector:
             return
 
         now = time.monotonic()
-
-        # Layer 1: Integer energy
         energy = frame_energy_int(block)
         self._last_energy = energy
 
-        # Layer 2: Adaptive noise floor -> Schmitt trigger thresholds
         self.noise_floor.update(energy)
-        t_high, t_low = self.noise_floor.thresholds()
+        t_high, t_low = self._get_thresholds()
         self._last_t_high = t_high
         self._last_t_low = t_low
 
-        # Layer 3: Schmitt trigger (hysteresis)
         is_active = self.schmitt.update(energy, t_high, t_low)
-
-        # Layer 4: Debounced click state machine
-        count = self.state_machine.update(is_active, now)
+        count, avg_peak, avg_dur = self.state_machine.update(is_active, now, energy)
         if count > 0:
-            self._on_clicks_detected(count)
+            self._on_clicks_detected(count, avg_peak, avg_dur)
 
         self._write_debug()
 
@@ -347,21 +496,20 @@ class ClickDetector:
 def main():
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
-
     signal.signal(signal.SIGALRM, signal.SIG_IGN)
-
     try:
         os.nice(-20)
     except PermissionError:
-        log.warning("Cannot set high priority (not root)")
+        pass
 
     cfg = load_config()
     detector = ClickDetector(cfg)
     detector.open_stream()
     detector.calibrate()
 
-    log.info("Click detector v2 running (short=%d, long=%d)",
-             detector.short_clicks, detector.long_clicks)
+    log.info("Click detector v3 running (short=%d, long=%d, profile=%d samples)",
+             detector.short_clicks, detector.long_clicks,
+             len(detector.profile.click_energies))
 
     try:
         while True:

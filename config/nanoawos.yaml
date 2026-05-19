@@ -31,6 +31,9 @@ tap:
   max_click_ms: 2000     # Reject voice/continuous signal longer than this
   min_gap_ms: 150        # Minimum silence between clicks (debounce)
   max_gap_ms: 2500       # Timeout: sequence complete after this silence
+  # Fallback threshold multipliers (used before self-learning has enough data)
+  high_mult: 50          # t_high = noise_floor * high_mult
+  low_mult: 10           # t_low = noise_floor * low_mult
 
 mqtt:
   enabled: false

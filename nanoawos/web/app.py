@@ -94,6 +94,36 @@ def api_play(name):
     return jsonify({"status": "playing", "playlist": name})
 
 
+@app.route("/api/tap/calibrate", methods=["POST"])
+def api_tap_calibrate():
+    """Start calibration mode. POST with {"clicks": N} to capture N sequences."""
+    data = request.get_json() or {}
+    n = data.get("clicks", 5)
+    with open("/tmp/nanoawos_calibrate", "w") as f:
+        f.write(str(n))
+    return jsonify({"status": "calibrating", "sequences": n})
+
+
+@app.route("/api/tap/profile")
+def api_tap_profile():
+    """Return the learned click profile."""
+    try:
+        with open("/tmp/nanoawos_click_profile.json") as f:
+            return jsonify(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return jsonify({"click_energies": [], "click_durations": []})
+
+
+@app.route("/api/tap/profile", methods=["DELETE"])
+def api_tap_profile_clear():
+    """Clear the learned profile to reset self-learning."""
+    try:
+        os.unlink("/tmp/nanoawos_click_profile.json")
+    except FileNotFoundError:
+        pass
+    return jsonify({"status": "cleared"})
+
+
 @app.route("/api/transcriptions")
 def api_transcriptions():
     """Return recent transcriptions."""
@@ -109,21 +139,27 @@ def api_transcriptions():
 @app.route("/api/tap")
 def api_tap():
     """Live tap detector debug data."""
-    raw = _read_file("/tmp/tap_debug", "0 0 0 0 0 quiet")
+    raw = _read_file("/tmp/tap_debug", "0 0.5 0 0 0 quiet 0 0 0 0 0")
     parts = raw.split()
     try:
         return jsonify({
             "amplitude": float(parts[0]),
             "threshold": float(parts[1]),
             "clicks": int(parts[2]),
-            "noisy_blocks": int(parts[3]),
-            "quiet_blocks": int(parts[4]),
-            "state": parts[5] if len(parts) > 5 else "unknown",
+            "active": int(parts[3]),
+            "profile_samples": int(parts[4]),
+            "state": parts[5],
+            "noise_floor": int(parts[6]) if len(parts) > 6 else 0,
+            "t_high": int(parts[7]) if len(parts) > 7 else 0,
+            "t_low": int(parts[8]) if len(parts) > 8 else 0,
+            "energy": int(parts[9]) if len(parts) > 9 else 0,
+            "auto_tuning": bool(int(parts[10])) if len(parts) > 10 else False,
+            "calibrating": parts[11] == "CAL" if len(parts) > 11 else False,
             "last_tap": _read_file("/tmp/tap", "0"),
         })
     except (IndexError, ValueError):
-        return jsonify({"amplitude": 0, "threshold": 0, "clicks": 0,
-                        "noisy_blocks": 0, "quiet_blocks": 0,
+        return jsonify({"amplitude": 0, "threshold": 0.5, "clicks": 0,
+                        "active": 0, "profile_samples": 0,
                         "state": "error", "last_tap": "0"})
 
 

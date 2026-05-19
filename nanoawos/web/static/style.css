@@ -44,11 +44,16 @@ legend { color: #94a3b8; font-size: 0.85rem; padding: 0 0.5rem; }
 .success { color: #22c55e; padding: 0.5rem 0; font-size: 0.9rem; }
 
 .tap-monitor { margin-top: 0.5rem; }
-.tap-bar-container { position: relative; height: 24px; background: #0f172a; border-radius: 4px; overflow: hidden; margin-bottom: 0.5rem; }
+.tap-bar-container { position: relative; height: 24px; background: #0f172a; border-radius: 4px; overflow: hidden; margin-bottom: 0.75rem; }
 .tap-bar { height: 100%; width: 0%; transition: width 0.1s, background 0.1s; border-radius: 4px; }
 .tap-threshold { position: absolute; top: 0; height: 100%; width: 2px; background: #f59e0b; }
-.tap-info { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; color: #94a3b8; }
-.tap-info strong { color: #e2e8f0; font-family: "JetBrains Mono", monospace; }
+.tap-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 0.75rem; }
+.tap-stat { background: #0f172a; padding: 0.4rem 0.6rem; border-radius: 4px; }
+.tap-stat label { display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.tap-stat span { font-size: 0.95rem; font-weight: 600; color: #38bdf8; font-family: "JetBrains Mono", monospace; }
+.tap-profile { padding-top: 0.5rem; border-top: 1px solid #334155; }
+.tap-profile-info { display: flex; gap: 1.5rem; font-size: 0.85rem; color: #94a3b8; }
+.tap-profile-info strong { font-family: "JetBrains Mono", monospace; }
 
 .tx-log { max-height: 400px; overflow-y: auto; }
 .tx-entry { background: #0f172a; border-radius: 6px; padding: 0.6rem 0.75rem; margin-bottom: 0.5rem; border-left: 3px solid #334155; }
