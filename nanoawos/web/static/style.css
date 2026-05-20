@@ -44,16 +44,20 @@ legend { color: #94a3b8; font-size: 0.85rem; padding: 0 0.5rem; }
 .success { color: #22c55e; padding: 0.5rem 0; font-size: 0.9rem; }
 
 .tap-monitor { margin-top: 0.5rem; }
-.tap-bar-container { position: relative; height: 24px; background: #0f172a; border-radius: 4px; overflow: hidden; margin-bottom: 0.75rem; }
+.tap-bar-container { height: 20px; background: #0f172a; border-radius: 4px; overflow: hidden; margin-bottom: 0.6rem; }
 .tap-bar { height: 100%; width: 0%; transition: width 0.1s, background 0.1s; border-radius: 4px; }
-.tap-threshold { position: absolute; top: 0; height: 100%; width: 2px; background: #f59e0b; }
-.tap-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 0.75rem; }
-.tap-stat { background: #0f172a; padding: 0.4rem 0.6rem; border-radius: 4px; }
-.tap-stat label { display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-.tap-stat span { font-size: 0.95rem; font-weight: 600; color: #38bdf8; font-family: "JetBrains Mono", monospace; }
-.tap-profile { padding-top: 0.5rem; border-top: 1px solid #334155; }
-.tap-profile-info { display: flex; gap: 1.5rem; font-size: 0.85rem; color: #94a3b8; }
-.tap-profile-info strong { font-family: "JetBrains Mono", monospace; }
+.tap-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 0.6rem; }
+.tap-stat { background: #0f172a; padding: 0.35rem 0.5rem; border-radius: 4px; }
+.tap-stat label { display: block; font-size: 0.6rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.tap-stat span { font-size: 0.9rem; font-weight: 600; color: #38bdf8; font-family: "JetBrains Mono", monospace; }
+.tap-actions { display: flex; align-items: center; gap: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #334155; }
+.tap-badge { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 10px; font-weight: 600; margin-left: 0.5rem; }
+.badge-ready { background: #064e3b; color: #34d399; }
+.badge-learn { background: #78350f; color: #fbbf24; }
+.badge-signal { background: #7f1d1d; color: #f87171; }
+.badge-cal { background: #78350f; color: #fbbf24; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+.btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 
 .tx-log { max-height: 400px; overflow-y: auto; }
 .tx-entry { background: #0f172a; border-radius: 6px; padding: 0.6rem 0.75rem; margin-bottom: 0.5rem; border-left: 3px solid #334155; }

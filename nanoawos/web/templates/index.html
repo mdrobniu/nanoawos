@@ -41,50 +41,25 @@
         </div>
     </section>
 
-    <!-- Tap Detection Debug -->
+    <!-- Click Detection -->
     <section class="card">
-        <h2>Click Detection <span id="tap-state" class="status"></span></h2>
+        <h2>Click Detection <span id="tap-badge" class="tap-badge"></span></h2>
         <div class="tap-monitor">
             <div class="tap-bar-container">
                 <div class="tap-bar" id="tap-bar"></div>
-                <div class="tap-threshold" id="tap-threshold-line"></div>
             </div>
             <div class="tap-stats">
-                <div class="tap-stat">
-                    <label>Energy</label>
-                    <span id="tap-energy">0</span>
-                </div>
-                <div class="tap-stat">
-                    <label>Noise Floor</label>
-                    <span id="tap-noise">0</span>
-                </div>
-                <div class="tap-stat">
-                    <label>T-High</label>
-                    <span id="tap-thigh">0</span>
-                </div>
-                <div class="tap-stat">
-                    <label>T-Low</label>
-                    <span id="tap-tlow">0</span>
-                </div>
-                <div class="tap-stat">
-                    <label>Clicks</label>
-                    <span id="tap-clicks">0</span>
-                </div>
-                <div class="tap-stat">
-                    <label>Last Tap</label>
-                    <span id="tap-last">0</span>
-                </div>
+                <div class="tap-stat"><label>Energy</label><span id="tap-energy">--</span></div>
+                <div class="tap-stat"><label>Noise</label><span id="tap-noise">--</span></div>
+                <div class="tap-stat"><label>Threshold</label><span id="tap-thigh">--</span></div>
+                <div class="tap-stat"><label>Pending</label><span id="tap-clicks">0</span></div>
+                <div class="tap-stat"><label>Last Result</label><span id="tap-last">--</span></div>
+                <div class="tap-stat"><label>Profile</label><span id="tap-profile-text">--</span></div>
             </div>
-            <div class="tap-profile">
-                <div class="tap-profile-info">
-                    <span>Self-Learning: <strong id="tap-mode">initializing</strong></span>
-                    <span>Samples: <strong id="tap-samples">0</strong></span>
-                </div>
-                <div class="actions" style="margin-top:0.5rem">
-                    <button onclick="startCalibration()" class="btn btn-outline" id="cal-btn">Calibrate (5 clicks)</button>
-                    <button onclick="clearProfile()" class="btn btn-outline">Reset Profile</button>
-                </div>
-                <p class="hint" id="cal-hint"></p>
+            <div class="tap-actions">
+                <button onclick="startCalibration()" class="btn btn-outline btn-sm" id="cal-btn">Recalibrate</button>
+                <button onclick="clearProfile()" class="btn btn-outline btn-sm">Reset Learning</button>
+                <span class="hint" id="cal-hint"></span>
             </div>
         </div>
     </section>
@@ -365,65 +340,68 @@ function updateTranscriptions() {
 setInterval(updateTranscriptions, 3000);
 updateTranscriptions();
 
-// Calibration controls
+// Click detection
 function startCalibration() {
-    if (!confirm('Start calibration? Press PTT 5 times with normal click patterns. Each pattern will be recorded.')) return;
-    fetch('/api/tap/calibrate', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({clicks: 5})})
-        .then(r => r.json()).then(() => {
-            document.getElementById('cal-hint').textContent = 'Calibrating... Press PTT in your normal click pattern 5 times.';
-            document.getElementById('cal-btn').disabled = true;
-        });
+    if (!confirm('Recalibrate? Click PTT in your normal pattern 5 times.')) return;
+    fetch('/api/tap/calibrate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({clicks:5})});
+    document.getElementById('cal-hint').textContent = 'Click PTT 5 times now...';
+    document.getElementById('cal-btn').disabled = true;
 }
 function clearProfile() {
-    if (!confirm('Reset self-learned profile? The system will re-learn from scratch.')) return;
-    fetch('/api/tap/profile', {method: 'DELETE'}).then(() => {
-        document.getElementById('tap-samples').textContent = '0';
-        document.getElementById('tap-mode').textContent = 'learning...';
-    });
+    if (!confirm('Reset learned profile? Will re-learn from scratch.')) return;
+    fetch('/api/tap/profile', {method:'DELETE'});
 }
-
-// Live tap detection monitor
-function fmtEnergy(e) {
-    if (e > 1e9) return (e/1e9).toFixed(1) + 'G';
-    if (e > 1e6) return (e/1e6).toFixed(1) + 'M';
-    if (e > 1e3) return (e/1e3).toFixed(0) + 'K';
-    return e;
+function fmtE(e) {
+    if (!e) return '--';
+    if (e > 1e9) return (e/1e9).toFixed(1)+'G';
+    if (e > 1e6) return (e/1e6).toFixed(1)+'M';
+    if (e > 1e3) return (e/1e3).toFixed(0)+'K';
+    return String(e);
 }
 function updateTap() {
-    fetch('/api/tap')
-        .then(r => r.json())
-        .then(d => {
-            const pct = Math.min(d.amplitude * 100 / 0.5, 100);
-            const bar = document.getElementById('tap-bar');
-            bar.style.width = pct + '%';
-            bar.style.background = d.state === 'NOISY' ? '#ef4444' : '#22c55e';
-            document.getElementById('tap-threshold-line').style.left = '50%';
-            document.getElementById('tap-energy').textContent = fmtEnergy(d.energy || 0);
-            document.getElementById('tap-noise').textContent = fmtEnergy(d.noise_floor || 0);
-            document.getElementById('tap-thigh').textContent = fmtEnergy(d.t_high || 0);
-            document.getElementById('tap-tlow').textContent = fmtEnergy(d.t_low || 0);
-            document.getElementById('tap-clicks').textContent = d.clicks;
-            document.getElementById('tap-last').textContent = d.last_tap;
-            document.getElementById('tap-samples').textContent = d.profile_samples || 0;
-            const stateEl = document.getElementById('tap-state');
-            if (d.calibrating) {
-                stateEl.textContent = 'CALIBRATING';
-                stateEl.style.color = '#f59e0b';
-                document.getElementById('cal-hint').textContent = 'Click PTT patterns now...';
-            } else {
-                stateEl.textContent = d.state === 'NOISY' ? 'SIGNAL' : 'idle';
-                stateEl.style.color = d.state === 'NOISY' ? '#ef4444' : '#22c55e';
-                document.getElementById('cal-btn').disabled = false;
-                if (d.auto_tuning) {
-                    document.getElementById('tap-mode').textContent = 'auto-tuned (' + d.profile_samples + ' samples)';
-                    document.getElementById('tap-mode').style.color = '#22c55e';
-                    document.getElementById('cal-hint').textContent = '';
-                } else {
-                    document.getElementById('tap-mode').textContent = 'learning... (' + d.profile_samples + '/5)';
-                    document.getElementById('tap-mode').style.color = '#f59e0b';
-                }
-            }
-        }).catch(() => {});
+    fetch('/api/tap').then(r=>r.json()).then(d => {
+        // Bar
+        const pct = Math.min(d.amplitude / 0.5 * 100, 100);
+        const bar = document.getElementById('tap-bar');
+        bar.style.width = pct + '%';
+        bar.style.background = d.state==='NOISY' ? '#ef4444' : (d.clicks > 0 ? '#f59e0b' : '#22c55e');
+
+        // Stats
+        document.getElementById('tap-energy').textContent = fmtE(d.energy);
+        document.getElementById('tap-noise').textContent = fmtE(d.noise_floor);
+        document.getElementById('tap-thigh').textContent = fmtE(d.t_high);
+        document.getElementById('tap-clicks').textContent = d.clicks || '--';
+        document.getElementById('tap-last').textContent = d.last_tap + ' clicks';
+
+        // Profile
+        const n = d.profile_samples || 0;
+        const profEl = document.getElementById('tap-profile-text');
+        if (d.auto_tuning) {
+            profEl.textContent = n + ' learned';
+            profEl.style.color = '#22c55e';
+        } else {
+            profEl.textContent = n + '/5 learning';
+            profEl.style.color = '#f59e0b';
+        }
+
+        // Badge
+        const badge = document.getElementById('tap-badge');
+        if (d.calibrating) {
+            badge.textContent = 'CALIBRATING';
+            badge.className = 'tap-badge badge-cal';
+            document.getElementById('cal-hint').textContent = 'Click PTT 5 times...';
+        } else if (d.state === 'NOISY') {
+            badge.textContent = 'SIGNAL';
+            badge.className = 'tap-badge badge-signal';
+            document.getElementById('cal-hint').textContent = '';
+            document.getElementById('cal-btn').disabled = false;
+        } else {
+            badge.textContent = d.auto_tuning ? 'READY' : 'LEARNING';
+            badge.className = 'tap-badge ' + (d.auto_tuning ? 'badge-ready' : 'badge-learn');
+            document.getElementById('cal-hint').textContent = '';
+            document.getElementById('cal-btn').disabled = false;
+        }
+    }).catch(()=>{});
 }
 setInterval(updateTap, 200);
 
