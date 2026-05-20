@@ -540,25 +540,33 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
 
         # For slow engines: look up pre-generated WAV
         if is_slow_engine:
-            if _is_time_varying(template):
-                # Find the minute-specific WAV
-                minute_str = datetime.now(timezone.utc).strftime("%H%M")
-                wav_path = _tts_wav_path_timed(tag, minute_str, cfg)
-            else:
-                wav_path = _tts_wav_path(tag, cfg)
+            wav_path = None
 
-            if os.path.exists(wav_path):
+            if _is_time_varying(template):
+                # Try exact minute first
+                minute_str = datetime.now(timezone.utc).strftime("%H%M")
+                exact = _tts_wav_path_timed(tag, minute_str, cfg)
+                if os.path.exists(exact):
+                    wav_path = exact
+                else:
+                    # Find the newest existing variant for this tag
+                    import glob as _glob
+                    safe_tag = re.sub(r'[^a-zA-Z0-9]', '_', tag)
+                    pattern = os.path.join(cfg["tts"]["output_dir"], f"action_{safe_tag}_????.wav")
+                    variants = sorted(_glob.glob(pattern))
+                    if variants:
+                        wav_path = variants[-1]  # newest
+            else:
+                candidate = _tts_wav_path(tag, cfg)
+                if os.path.exists(candidate):
+                    wav_path = candidate
+
+            if wav_path:
                 log.info("TTS [%s] playing cached: %s", tag, wav_path)
                 from nanoawos.audio import play_wav
                 play_wav(wav_path, cfg)
                 return
-            # Fall back to any existing variant
-            fallback = _tts_wav_path(tag, cfg)
-            if os.path.exists(fallback):
-                log.info("TTS [%s] playing fallback: %s", tag, fallback)
-                from nanoawos.audio import play_wav
-                play_wav(fallback, cfg)
-                return
+
             log.info("TTS [%s] no cached WAV, generating live...", tag)
 
         # Cloud engine or no cached WAV -- generate live

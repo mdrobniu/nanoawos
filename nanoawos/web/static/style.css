@@ -59,6 +59,12 @@ legend { color: #94a3b8; font-size: 0.85rem; padding: 0 0.5rem; }
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
 .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 
+.debug-log { max-height: 300px; overflow-y: auto; background: #0a0e1a; border-radius: 4px; padding: 0.5rem; font-family: "JetBrains Mono", monospace; font-size: 0.72rem; line-height: 1.5; }
+.log-line { color: #64748b; white-space: pre-wrap; word-break: break-all; }
+.log-err { color: #f87171; }
+.log-warn { color: #fbbf24; }
+.log-action { color: #34d399; }
+
 .action-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
 .action-clicks { background: #334155; color: #e2e8f0; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; }
 .action-label { width: 120px; padding: 0.3rem 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-size: 0.85rem; }

@@ -168,6 +168,26 @@ def api_audio_delete(name):
     return jsonify({"error": "Not found"}), 404
 
 
+@app.route("/api/logs")
+def api_logs():
+    """Return recent log lines from tap and weather services."""
+    lines = []
+    for svc in ["nanoawos-tap", "nanoawos-weather.service", "nanoawos-gpio"]:
+        try:
+            r = subprocess.run(
+                ["journalctl", "-u", svc, "--since", "10 min ago",
+                 "--no-pager", "-o", "short-iso", "--no-hostname"],
+                capture_output=True, text=True, timeout=5)
+            for line in r.stdout.strip().split("\n"):
+                if line and "ALSA" not in line and "pcm" not in line and "conf.c" not in line:
+                    lines.append(line)
+        except Exception:
+            pass
+    # Sort by timestamp and return last 50
+    lines.sort()
+    return jsonify(lines[-50:])
+
+
 @app.route("/api/transcriptions")
 def api_transcriptions():
     """Return recent transcriptions."""

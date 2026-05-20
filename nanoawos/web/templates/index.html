@@ -297,6 +297,12 @@
         </form>
         <div id="save-status"></div>
     </section>
+
+    <!-- Live Debug Log -->
+    <section class="card">
+        <h2>System Log</h2>
+        <div id="debug-log" class="debug-log"></div>
+    </section>
 </div>
 
 <script>
@@ -618,6 +624,23 @@ setInterval(updateTap, 200);
 
 // Auto-refresh weather every 60s
 setInterval(updateWeather, 60000);
+
+// Live debug log
+function updateLogs() {
+    fetch('/api/logs').then(r=>r.json()).then(lines => {
+        const el = document.getElementById('debug-log');
+        el.innerHTML = lines.map(l => {
+            let cls = 'log-line';
+            if (l.includes('ERROR') || l.includes('error')) cls += ' log-err';
+            else if (l.includes('WARNING')) cls += ' log-warn';
+            else if (l.includes('Detected') || l.includes('Playing') || l.includes('Executing')) cls += ' log-action';
+            return `<div class="${cls}">${l.replace(/</g,'&lt;')}</div>`;
+        }).join('');
+        el.scrollTop = el.scrollHeight;
+    }).catch(()=>{});
+}
+setInterval(updateLogs, 3000);
+updateLogs();
 </script>
 </body>
 </html>
