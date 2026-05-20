@@ -238,16 +238,23 @@ def api_config_put():
         return jsonify({"error": "No JSON body"}), 400
 
     cfg = load_config()
-    # Merge sections
+    # Sections that should be fully replaced (not merged)
+    replace_sections = {"click_actions", "transcription_reactions", "data_sources"}
     for section, values in new_cfg.items():
         if section.startswith("_"):
             continue
-        if isinstance(values, dict) and section in cfg:
+        if section in replace_sections:
+            cfg[section] = values
+        elif isinstance(values, dict) and section in cfg and isinstance(cfg[section], dict):
             cfg[section].update(values)
         else:
             cfg[section] = values
 
     save_config(cfg)
+    # Bust the config cache so services pick up changes
+    global _config
+    from nanoawos import config as _cfg_mod
+    _cfg_mod._config = None
     return jsonify({"status": "saved"})
 
 

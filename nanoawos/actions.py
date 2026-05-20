@@ -141,6 +141,97 @@ def _publish_mqtt(topic, payload, cfg):
         log.error("MQTT publish failed: %s", e)
 
 
+TTS_CACHE_FILE = "/tmp/nanoawos_tts_cache.json"
+
+
+def _load_tts_cache():
+    """Load the text-hash cache: maps wav_path -> rendered_text."""
+    try:
+        with open(TTS_CACHE_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_tts_cache(cache):
+    with open(TTS_CACHE_FILE, "w") as f:
+        json.dump(cache, f)
+
+
+def _tts_wav_path(tag, cfg):
+    output_dir = cfg["tts"]["output_dir"]
+    safe_tag = re.sub(r'[^a-zA-Z0-9]', '_', tag)
+    return f"{output_dir}/action_{safe_tag}.wav"
+
+
+def pregenerate_tts_actions(cfg=None):
+    """Pre-generate WAV files for all TTS actions that use Piper.
+
+    Called every 5 minutes by the weather update service. Only regenerates
+    if the rendered text changed (dynamic Jinja2 templates) or the WAV
+    doesn't exist yet (first run / new action).
+
+    Cloud TTS actions are skipped -- they're fast enough at click time.
+    """
+    if cfg is None:
+        cfg = load_config()
+
+    cache = _load_tts_cache()
+    changed = False
+
+    # Collect all TTS actions from click_actions and transcription_reactions
+    all_actions = []
+    for key, action in cfg.get("click_actions", {}).items():
+        if action.get("type") == "tts":
+            all_actions.append((f"{key}_clicks", action, None))
+    for i, rule in enumerate(cfg.get("transcription_reactions", [])):
+        if rule.get("type") == "tts":
+            all_actions.append((f"reaction_{rule.get('label', i)}", rule, None))
+
+    for tag, action, extra_ctx in all_actions:
+        engine = action.get("tts_engine", "") or cfg["tts"].get("engine", "piper")
+
+        # Only pre-generate for piper (slow). Cloud TTS is fast enough live.
+        if engine not in ("piper", "wav_concat"):
+            continue
+
+        template = action.get("text", "")
+        if not template:
+            continue
+
+        rendered = render_template(template, cfg, extra_ctx)
+        wav_path = _tts_wav_path(tag, cfg)
+        cached_text = cache.get(wav_path, "")
+
+        # Skip if text unchanged AND wav file exists
+        if rendered == cached_text and os.path.exists(wav_path):
+            log.debug("TTS cache hit for %s (text unchanged)", tag)
+            continue
+
+        # Need to (re)generate
+        log.info("Pre-generating TTS [%s]: %s", tag, rendered[:80])
+        try:
+            from nanoawos.tts import synthesize
+            if engine != cfg["tts"].get("engine"):
+                original = cfg["tts"].get("engine")
+                cfg["tts"]["engine"] = engine
+                try:
+                    synthesize(rendered, wav_path, cfg)
+                finally:
+                    cfg["tts"]["engine"] = original
+            else:
+                synthesize(rendered, wav_path, cfg)
+            cache[wav_path] = rendered
+            changed = True
+            log.info("Pre-generated: %s", wav_path)
+        except Exception as e:
+            log.error("Pre-generation failed for %s: %s", tag, e)
+
+    if changed:
+        _save_tts_cache(cache)
+        log.info("TTS cache updated (%d entries)", len(cache))
+
+
 def _run_action(action, cfg, tag="action", extra_ctx=None):
     """Execute a single action dict. Shared by clicks and transcription reactions.
 
@@ -168,16 +259,21 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
             log.warning("TTS action has no text template")
             return
         text = render_template(template, cfg, extra_ctx)
-        log.info("TTS [%s]: %s", tag, text)
+        tts_engine = action.get("tts_engine", "") or cfg["tts"].get("engine", "piper")
+        wav_path = _tts_wav_path(tag, cfg)
 
-        tts_engine = action.get("tts_engine", "")
+        # Check if pre-generated WAV matches current text (instant playback)
+        cache = _load_tts_cache()
+        if cache.get(wav_path) == text and os.path.exists(wav_path):
+            log.info("TTS [%s] playing cached: %s", tag, text[:60])
+            from nanoawos.audio import play_wav
+            play_wav(wav_path, cfg)
+            return
+
+        # Not cached -- generate now (fast for cloud, slow for piper)
+        log.info("TTS [%s] generating live: %s", tag, text[:60])
         from nanoawos.tts import synthesize
-        output_dir = cfg["tts"]["output_dir"]
-        # Use tag hash for unique filename
-        safe_tag = re.sub(r'[^a-zA-Z0-9]', '_', tag)
-        wav_path = f"{output_dir}/action_{safe_tag}.wav"
-
-        if tts_engine:
+        if tts_engine != cfg["tts"].get("engine"):
             original = cfg["tts"].get("engine")
             cfg["tts"]["engine"] = tts_engine
             try:
@@ -186,6 +282,10 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
                 cfg["tts"]["engine"] = original
         else:
             synthesize(text, wav_path, cfg)
+
+        # Update cache
+        cache[wav_path] = text
+        _save_tts_cache(cache)
 
         from nanoawos.audio import play_wav
         play_wav(wav_path, cfg)
