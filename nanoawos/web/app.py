@@ -110,7 +110,12 @@ def api_switch_audio_mode():
     cfg.setdefault("audio", {})["input_mode"] = mode
     save_config(cfg)
 
-    # Stop both, start the right one
+    # Both modes write to ALSA loopback hw:1,0.
+    # DarkIce always reads from plughw:1,1. No config change needed.
+    # Tap detector auto-detects mode from config on restart.
+    #
+    # Sequence: stop sources -> start correct source -> wait -> restart consumers
+
     subprocess.run(["sudo", "systemctl", "stop", "nanoawos-audiobridge"], capture_output=True)
     subprocess.run(["sudo", "systemctl", "stop", "nanoawos-sdr"], capture_output=True)
 
@@ -119,9 +124,11 @@ def api_switch_audio_mode():
     else:
         subprocess.run(["sudo", "systemctl", "start", "nanoawos-audiobridge"], capture_output=True)
 
-    # Restart DarkIce to pick up loopback changes
+    # Brief wait for audio source to start writing to loopback
+    import time as _time
+    _time.sleep(2)
+
     subprocess.run(["sudo", "systemctl", "restart", "darkice"], capture_output=True)
-    # Restart tap detector (reads from different source in SDR mode)
     subprocess.run(["sudo", "systemctl", "restart", "nanoawos-tap"], capture_output=True)
 
     return jsonify({"status": "ok", "mode": mode})
