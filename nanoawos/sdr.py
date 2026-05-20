@@ -37,11 +37,11 @@ def main():
     sample_rate = sdr_cfg.get("sample_rate", 12000)
     device_index = sdr_cfg.get("device_index", 0)
 
-    # Audio processing settings (reuse from analog config)
-    cutoff = audio_cfg.get("filter_cutoff_hz", 300)
-    noise_amount = audio_cfg.get("noise_reduction", 0.15)
-    gain_db = audio_cfg.get("gain_db", 0)
-    compand = audio_cfg.get("compand", False)
+    # SDR has its own audio processing settings (separate from analog)
+    cutoff = sdr_cfg.get("filter_cutoff_hz", 200)
+    noise_amount = sdr_cfg.get("noise_reduction", 0)
+    gain_db = sdr_cfg.get("gain_db", 0)
+    compand = sdr_cfg.get("compand", False)
     noise_prof = "/tmp/noise.prof"
 
     # Build rtl_fm command
@@ -90,47 +90,28 @@ def main():
         stdin=sox.stdout, stderr=subprocess.DEVNULL,
     )
 
-    # Create FIFO for tap detector / transcription to read from
-    fifo_path = "/tmp/nanoawos_sdr_audio"
-    try:
-        os.unlink(fifo_path)
-    except FileNotFoundError:
-        pass
-    os.mkfifo(fifo_path)
-
-    # Tee sox output to both loopback (for DarkIce) and FIFO (for tap/transcribe)
-    tee = subprocess.Popen(
-        ["tee", fifo_path],
-        stdin=sox.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-    )
     play = subprocess.Popen(
         ["aplay", "-D", "hw:1,0", "-f", "S16_LE",
          "-r", str(sample_rate), "-c", "1", "-t", "raw",
          "--buffer-size", str(sample_rate // 5)],
-        stdin=tee.stdout, stderr=subprocess.DEVNULL,
+        stdin=sox.stdout, stderr=subprocess.DEVNULL,
     )
 
     rtl.stdout.close()
     sox.stdout.close()
-    tee.stdout.close()
 
-    log.info("SDR running (rtl=%d sox=%d tee=%d play=%d) fifo=%s",
-             rtl.pid, sox.pid, tee.pid, play.pid, fifo_path)
+    log.info("SDR running (rtl=%d sox=%d play=%d)", rtl.pid, sox.pid, play.pid)
 
     try:
         play.wait()
     except KeyboardInterrupt:
         pass
     finally:
-        for p in [rtl, sox, tee, play]:
+        for p in [rtl, sox, play]:
             try:
                 p.terminate()
             except Exception:
                 pass
-        try:
-            os.unlink(fifo_path)
-        except Exception:
-            pass
         log.info("SDR stopped")
 
 

@@ -338,18 +338,24 @@ class ClickDetector:
     def open_stream(self):
         input_mode = self.cfg.get("audio", {}).get("input_mode", "analog")
         self._sdr_fifo = None
+        self._sdr_proc = None
+        self.stream = None
 
         if input_mode == "sdr":
-            # In SDR mode, read from the FIFO that the SDR pipeline writes to
-            fifo_path = "/tmp/nanoawos_sdr_audio"
+            # In SDR mode, read from loopback dsnoop (shared with DarkIce)
             sdr_rate = self.cfg.get("sdr", {}).get("sample_rate", 12000)
-            log.info("SDR mode: reading from FIFO %s at %dHz", fifo_path, sdr_rate)
-            self._sdr_fifo = open(fifo_path, "rb")
+            log.info("SDR mode: reading from loopsnoop at %dHz", sdr_rate)
+            import subprocess
+            self._sdr_proc = subprocess.Popen(
+                ["arecord", "-D", "loopdefault", "-f", "S16_LE",
+                 "-r", str(sdr_rate), "-c", "1", "-t", "raw"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            )
+            self._sdr_fifo = self._sdr_proc.stdout
             self._sdr_rate = sdr_rate
             self._sdr_chunk = sdr_rate // 20  # 50ms chunks
-            # Update filter for SDR sample rate
             from nanoawos.audiofilter import HighPassFilter
-            self.hpf = HighPassFilter(cutoff_hz=300, sample_rate=sdr_rate)
+            self.hpf = HighPassFilter(cutoff_hz=200, sample_rate=sdr_rate)
         else:
             device_index = self.find_input_device()
             self.stream = self.pa.open(
@@ -362,10 +368,12 @@ class ClickDetector:
     def calibrate(self):
         """Seed noise floor tracker."""
         log.info("Calibrating noise floor for %d seconds...", self.calibration_seconds)
-        blocks = int(self.calibration_seconds / (FRAME_SAMPLES / RATE))
+        rate = self._sdr_rate if self._sdr_fifo else RATE
+        frame = self._sdr_chunk if self._sdr_fifo else FRAME_SAMPLES
+        blocks = int(self.calibration_seconds / (frame / rate))
         for _ in range(blocks):
             try:
-                block = self.stream.read(FRAME_SAMPLES, exception_on_overflow=False)
+                block = self._read_block()
                 self.noise_floor.update(frame_energy_int(block))
             except IOError:
                 pass
@@ -519,6 +527,8 @@ class ClickDetector:
         self._write_debug()
 
     def close(self):
+        if hasattr(self, '_sdr_proc') and self._sdr_proc:
+            self._sdr_proc.terminate()
         if self.stream:
             self.stream.close()
         self.pa.terminate()

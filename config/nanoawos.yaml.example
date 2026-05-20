@@ -35,6 +35,11 @@ sdr:
   ppm_correction: 0          # Frequency correction in PPM (measure with rtl_test -p)
   sample_rate: 12000         # Audio sample rate (12000 is good for voice)
   device_index: 0            # RTL-SDR device index (if multiple dongles)
+  # SDR audio processing (separate from analog -- SDR is cleaner, needs less filtering)
+  filter_cutoff_hz: 200      # Lower cutoff OK for SDR (no cable buzz)
+  noise_reduction: 0         # Usually 0 for SDR (no analog noise)
+  gain_db: 0                 # Volume boost if needed
+  compand: false             # Auto-level voice
 
 tap:
   short_clicks: 4

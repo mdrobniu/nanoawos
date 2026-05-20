@@ -64,10 +64,13 @@ def index():
     cfg = load_config()
     weather = _get_weather_data()
     models = _list_tts_models()
+    input_mode = cfg.get("audio", {}).get("input_mode", "analog")
     services = {
         "weather_timer": _service_status("nanoawos-weather.timer"),
         "tap": _service_status("nanoawos-tap"),
         "gpio": _service_status("nanoawos-gpio"),
+        ("sdr" if input_mode == "sdr" else "audiobridge"): _service_status(
+            "nanoawos-sdr" if input_mode == "sdr" else "nanoawos-audiobridge"),
         "mpd": _service_status("mpd"),
         "darkice": _service_status("darkice"),
         "icecast": _service_status("icecast2"),
