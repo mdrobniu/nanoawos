@@ -95,6 +95,17 @@
         </div>
     </section>
 
+    <!-- Click Actions -->
+    <section class="card">
+        <h2>Click Actions</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Map click counts to actions. TTS templates support Jinja2 variables: weather.wind, station.name, time.zulu, etc.</p>
+        <div id="click-actions-editor"></div>
+        <div class="actions" style="margin-top:0.75rem">
+            <button onclick="saveClickActions()" class="btn btn-primary">Save Actions</button>
+        </div>
+        <div id="actions-status"></div>
+    </section>
+
     <!-- Configuration -->
     <section class="card">
         <h2>Configuration</h2>
@@ -264,6 +275,74 @@
 </div>
 
 <script>
+// Click actions editor
+function toggleActionFields(sel) {
+    const n = sel.dataset.n;
+    const type = sel.value;
+    document.querySelectorAll(`.action-extra[data-n="${n}"]`).forEach(el => {
+        const f = el.dataset.field;
+        if (f === 'text' || f === 'tts_engine') el.style.display = type === 'tts' ? '' : 'none';
+        if (f === 'topic') el.style.display = type === 'mqtt' ? '' : 'none';
+    });
+}
+function buildActionEditor(actions) {
+    const c = document.getElementById('click-actions-editor');
+    let html = '';
+    for (let n = 4; n <= 12; n++) {
+        const a = actions[String(n)] || {};
+        const t = a.type || 'none';
+        const showTts = t === 'tts' ? '' : 'display:none';
+        const showMqtt = t === 'mqtt' ? '' : 'display:none';
+        html += `<div class="action-row">
+            <span class="action-clicks">${n}</span>
+            <input class="action-label" data-n="${n}" data-field="label" value="${a.label||''}" placeholder="Label">
+            <select class="action-type" data-n="${n}" data-field="type" onchange="toggleActionFields(this)">
+                <option value="none" ${t==='none'?'selected':''}>None</option>
+                <option value="weather_wind" ${t==='weather_wind'?'selected':''}>Wind report</option>
+                <option value="weather_full" ${t==='weather_full'?'selected':''}>Full weather</option>
+                <option value="tts" ${t==='tts'?'selected':''}>Custom TTS</option>
+                <option value="mqtt" ${t==='mqtt'?'selected':''}>MQTT event</option>
+            </select>
+            <select class="action-extra" data-n="${n}" data-field="tts_engine" style="${showTts}">
+                <option value="" ${!a.tts_engine?'selected':''}>Default engine</option>
+                <option value="piper" ${a.tts_engine==='piper'?'selected':''}>Piper</option>
+                <option value="cloud" ${a.tts_engine==='cloud'?'selected':''}>OpenAI</option>
+                <option value="wav_concat" ${a.tts_engine==='wav_concat'?'selected':''}>WAV</option>
+            </select>
+            <input class="action-extra" data-n="${n}" data-field="text" value="${(a.text||'').replace(/"/g,'&quot;')}" placeholder="Template: {&lcub; weather.wind }}, {&lcub; time.zulu }}..." style="${showTts}">
+            <input class="action-extra" data-n="${n}" data-field="topic" value="${a.topic||'nanoawos/clicks/'+n}" placeholder="MQTT topic" style="${showMqtt}">
+        </div>`;
+    }
+    c.innerHTML = html;
+}
+// Load actions on page load
+fetch('/api/config').then(r=>r.json()).then(cfg => buildActionEditor(cfg.click_actions||{}));
+
+function saveClickActions() {
+    const actions = {};
+    for (let n = 4; n <= 12; n++) {
+        const type = document.querySelector(`.action-type[data-n="${n}"]`).value;
+        if (type === 'none') continue;
+        const label = document.querySelector(`.action-label[data-n="${n}"]`).value || `${n} clicks`;
+        const act = {type, label};
+        if (type === 'tts') {
+            act.text = document.querySelector(`.action-extra[data-n="${n}"][data-field="text"]`).value;
+            const eng = document.querySelector(`.action-extra[data-n="${n}"][data-field="tts_engine"]`).value;
+            if (eng) act.tts_engine = eng;
+        }
+        if (type === 'mqtt') act.topic = document.querySelector(`.action-extra[data-n="${n}"][data-field="topic"]`).value;
+        actions[String(n)] = act;
+    }
+    fetch('/api/config', {method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({click_actions: actions})
+    }).then(r=>r.json()).then(() => {
+        const s = document.getElementById('actions-status');
+        s.textContent = 'Actions saved. Takes effect immediately.';
+        s.className = 'success';
+        setTimeout(() => s.textContent = '', 5000);
+    });
+}
+
 function playWeather(type) {
     fetch('/api/play/' + type, {method: 'POST'})
         .then(r => r.json())

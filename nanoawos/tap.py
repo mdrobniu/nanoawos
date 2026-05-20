@@ -428,15 +428,8 @@ class ClickDetector:
             log.info("PTT active, skipping playback")
             return
 
-        from nanoawos.audio import play_playlist
-
-        if count == self.long_clicks:
-            play_playlist("full", self.cfg)
-        elif count == self.short_clicks:
-            play_playlist("wind", self.cfg)
-        else:
-            log.info("Ignoring %d clicks (expected %d or %d)",
-                     count, self.short_clicks, self.long_clicks)
+        from nanoawos.actions import execute_action
+        execute_action(count, self.cfg)
 
     def _write_debug(self):
         """Write live debug data to /tmp/tap_debug for web UI."""

@@ -35,10 +35,63 @@ tap:
   high_mult: 50          # t_high = noise_floor * high_mult
   low_mult: 10           # t_low = noise_floor * low_mult
 
+# Click actions: map click counts (4-12) to actions
+# Types: weather_wind, weather_full, tts, mqtt, none
+click_actions:
+  4:
+    label: "Wind report"
+    type: "weather_wind"
+  6:
+    label: "Full weather"
+    type: "weather_full"
+  5:
+    label: "5-click MQTT"
+    type: "mqtt"
+    topic: "nanoawos/clicks/5"
+  7:
+    label: "7-click MQTT"
+    type: "mqtt"
+    topic: "nanoawos/clicks/7"
+  8:
+    label: "Custom TTS"
+    type: "tts"
+    text: "{{ station.name }}, {{ time.zulu }}, wind {{ weather.wind }}"
+  9:
+    label: "9-click MQTT"
+    type: "mqtt"
+    topic: "nanoawos/clicks/9"
+  10:
+    label: "10-click MQTT"
+    type: "mqtt"
+    topic: "nanoawos/clicks/10"
+  11:
+    label: "11-click MQTT"
+    type: "mqtt"
+    topic: "nanoawos/clicks/11"
+  12:
+    label: "12-click MQTT"
+    type: "mqtt"
+    topic: "nanoawos/clicks/12"
+
+# Custom data sources for Jinja2 templates in TTS actions
+# Each source is fetched via HTTP GET and cached. Available as {{ source_name.field }}
+data_sources: []
+  # Example:
+  # - name: "metar_api"
+  #   url: "https://aviationweather.gov/api/data/metar?ids=XXXX&format=json"
+  #   cache_ttl: 300
+  #   headers:
+  #     Authorization: "Bearer your-token"
+  # - name: "notam"
+  #   url: "https://api.example.com/notams?icao=XXXX"
+  #   cache_ttl: 3600
+
 mqtt:
   enabled: false
   broker: "localhost"
   port: 1883
+  username: ""
+  password: ""
 
 web:
   enabled: true

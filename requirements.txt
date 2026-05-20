@@ -5,3 +5,4 @@ piper-tts>=1.2.0
 paho-mqtt>=1.6
 flask>=2.3
 PyYAML>=5.4
+Jinja2>=3.1

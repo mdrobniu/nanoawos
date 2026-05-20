@@ -104,6 +104,16 @@ def play_playlist(name, cfg=None):
     log.info("Playing playlist: %s", name)
 
 
+def play_wav(wav_path, cfg=None):
+    """Play a single WAV file directly."""
+    if cfg is None:
+        cfg = load_config()
+    _mpc(["clear"], cfg)
+    _mpc(["add", wav_path], cfg)
+    _mpc(["play"], cfg)
+    log.info("Playing WAV: %s", wav_path)
+
+
 def _get_mpd_state(cfg):
     """Get MPD play state via python-mpd2."""
     from mpd import MPDClient

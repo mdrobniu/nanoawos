@@ -59,6 +59,12 @@ legend { color: #94a3b8; font-size: 0.85rem; padding: 0 0.5rem; }
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
 .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 
+.action-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
+.action-clicks { background: #334155; color: #e2e8f0; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; }
+.action-label { width: 120px; padding: 0.3rem 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-size: 0.85rem; }
+.action-type { padding: 0.3rem 0.4rem; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-size: 0.85rem; }
+.action-extra { flex: 1; min-width: 150px; padding: 0.3rem 0.5rem; background: #0f172a; border: 1px solid #475569; border-radius: 4px; color: #f59e0b; font-size: 0.85rem; font-family: "JetBrains Mono", monospace; }
+
 .tx-log { max-height: 400px; overflow-y: auto; }
 .tx-entry { background: #0f172a; border-radius: 6px; padding: 0.6rem 0.75rem; margin-bottom: 0.5rem; border-left: 3px solid #334155; }
 .tx-header { display: flex; justify-content: space-between; margin-bottom: 0.25rem; }
