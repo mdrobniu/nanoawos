@@ -217,14 +217,14 @@
                     <input name="audio.noise_reduction" type="number" step="0.05" min="0" max="1" value="{{ cfg.audio.get('noise_reduction', 0.3) }}">
                 </div>
                 <div class="form-row">
-                    <label>Gain (dB)</label>
+                    <label>Volume Boost (dB)</label>
                     <input name="audio.gain_db" type="number" step="1" value="{{ cfg.audio.get('gain_db', 0) }}">
                 </div>
                 <div class="form-row">
-                    <label>Compressor</label>
+                    <label>Auto-Level Voice</label>
                     <input type="checkbox" name="audio.compand" {{ 'checked' if cfg.audio.get('compand') }}>
                 </div>
-                <p class="hint">Cutoff: high-pass Hz. Noise: 0=off to 1=max. Gain: volume boost in dB (6=2x louder). Compressor: auto-levels quiet/loud voice.</p>
+                <p class="hint">Volume Boost: 0=no change, 6=2x louder, 12=4x. Auto-Level: compresses dynamic range so quiet voice is louder and loud voice doesn't clip.</p>
                 <div class="actions" style="margin-top:0.5rem">
                     <button type="button" onclick="recaptureNoise()" class="btn btn-outline btn-sm">Recapture Noise Profile</button>
                     <span class="hint" id="noise-hint"></span>
