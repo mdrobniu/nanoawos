@@ -112,7 +112,7 @@ nanoawos/
   install.sh                    # Automated deployment script
   img/                          # Hardware assembly photos & diagrams
   config/
-    nanoawos.yaml               # Main configuration file
+    nanoawos.yaml.example       # Configuration template (copy to nanoawos.yaml)
     asound.conf                 # ALSA dsnoop for shared mic access
     darkice.cfg                 # Icecast audio streamer config
     icecast.xml                 # Icecast server config

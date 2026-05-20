@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Site-specific config lives only on the Pi, not in the repo
+# The repo ships config/nanoawos.yaml.example as a template

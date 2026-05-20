@@ -32,8 +32,8 @@ pip3 install -q flask pyyaml requests python-mpd2 2>/dev/null || true
 # --- Copy config if not exists ---
 echo "[3/7] Setting up configuration..."
 if [ ! -f "$INSTALL_DIR/config/nanoawos.yaml" ]; then
-    cp "$SCRIPT_DIR/config/nanoawos.yaml" "$INSTALL_DIR/config/nanoawos.yaml"
-    echo "  Created default config"
+    cp "$INSTALL_DIR/config/nanoawos.yaml.example" "$INSTALL_DIR/config/nanoawos.yaml"
+    echo "  Created config from template -- EDIT config/nanoawos.yaml with your station details"
 else
     echo "  Config already exists, keeping current"
 fi
