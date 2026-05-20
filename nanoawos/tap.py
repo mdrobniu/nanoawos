@@ -290,6 +290,10 @@ class ClickDetector:
         self.default_high_mult = tap_cfg.get("high_mult", 50.0)
         self.default_low_mult = tap_cfg.get("low_mult", 10.0)
 
+        # Audio filter (removes 50Hz mains hum from cable)
+        from nanoawos.audiofilter import HighPassFilter
+        self.hpf = HighPassFilter(cutoff_hz=150, sample_rate=RATE)
+
         # Detection pipeline
         self.noise_floor = NoiseFloorTracker(alpha_rise=0.001, alpha_fall=0.05)
         self.schmitt = SchmittTrigger()
@@ -471,6 +475,9 @@ class ClickDetector:
             self.error_count += 1
             log.warning("Audio read error #%d: %s", self.error_count, e)
             return
+
+        # Filter out 50Hz mains hum / cable buzz
+        block = self.hpf.process_block(block)
 
         now = time.monotonic()
         energy = frame_energy_int(block)

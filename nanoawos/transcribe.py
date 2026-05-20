@@ -60,7 +60,9 @@ class TranscriptionService:
         self.action_model = tc.get("action_model", "gpt-4o-mini")
         self.action_prompt = tc.get("action_prompt", "Extract actionable items from this radio transmission. Be brief.")
 
-        # Audio state
+        # Audio filter and state
+        from nanoawos.audiofilter import HighPassFilter
+        self.hpf = HighPassFilter(cutoff_hz=150, sample_rate=RATE)
         self.pa = pyaudio.PyAudio()
         self.stream = None
         self.threshold = 0.05
@@ -248,6 +250,9 @@ class TranscriptionService:
             block = self.stream.read(FRAMES_PER_BLOCK, exception_on_overflow=False)
         except IOError:
             return
+
+        # Filter out 50Hz mains hum / cable buzz
+        block = self.hpf.process_block(block)
 
         amplitude = get_rms(block)
 
