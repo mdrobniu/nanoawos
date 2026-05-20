@@ -292,7 +292,7 @@ class ClickDetector:
 
         # Audio filter (removes 50Hz mains hum from cable)
         from nanoawos.audiofilter import HighPassFilter
-        self.hpf = HighPassFilter(cutoff_hz=150, sample_rate=RATE)
+        self.hpf = HighPassFilter(cutoff_hz=300, sample_rate=RATE)
 
         # Detection pipeline
         self.noise_floor = NoiseFloorTracker(alpha_rise=0.001, alpha_fall=0.05)

@@ -62,7 +62,7 @@ class TranscriptionService:
 
         # Audio filter and state
         from nanoawos.audiofilter import HighPassFilter
-        self.hpf = HighPassFilter(cutoff_hz=150, sample_rate=RATE)
+        self.hpf = HighPassFilter(cutoff_hz=300, sample_rate=RATE)
         self.pa = pyaudio.PyAudio()
         self.stream = None
         self.threshold = 0.05

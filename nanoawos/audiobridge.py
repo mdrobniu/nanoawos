@@ -29,7 +29,7 @@ def main():
     signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
     cfg = load_config()
-    cutoff = cfg.get("audio", {}).get("filter_cutoff_hz", 150)
+    cutoff = cfg.get("audio", {}).get("filter_cutoff_hz", 300)
 
     hpf = HighPassFilter(cutoff_hz=cutoff, sample_rate=RATE)
     chunk_bytes = CHUNK_FRAMES * 2  # 16-bit mono
