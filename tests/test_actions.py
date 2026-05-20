@@ -12,9 +12,11 @@ from nanoawos.actions import (
     pregenerate_tts_actions,
     render_template,
     _tts_wav_path,
+    _is_time_varying,
     _filter_nato,
     _filter_digits,
     _filter_avspeak,
+    _filter_wind,
     _filter_time,
 )
 
@@ -141,6 +143,27 @@ class TestAviationFilters:
     def test_time_filter_in_template(self, sample_config, mock_metar_files):
         result = render_template('{{ "1700Z" | time }}', sample_config)
         assert result == "one seven zero zero zulu"
+
+    def test_wind_simple(self):
+        assert _filter_wind("270@12") == "two seven zero at one two"
+
+    def test_wind_with_gusts(self):
+        assert _filter_wind("309@7G8") == "three zero niner at seven gusts eight"
+
+    def test_wind_no_gust(self):
+        assert _filter_wind("180@5") == "one eight zero at five"
+
+    def test_wind_filter_in_template(self, sample_config, mock_metar_files):
+        result = render_template('{{ "157@7G8" | wind }}', sample_config)
+        assert result == "one five seven at seven gusts eight"
+
+    def test_is_time_varying_true(self):
+        assert _is_time_varying("{{ time.zulu }}") is True
+        assert _is_time_varying("wind {{ weather.wind }}, {{ time.utc_hhmm }}Z") is True
+
+    def test_is_time_varying_false(self):
+        assert _is_time_varying("hello world") is False
+        assert _is_time_varying("{{ weather.wind }}") is False
 
 
 class TestRenderTemplate:

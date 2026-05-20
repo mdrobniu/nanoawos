@@ -189,6 +189,27 @@ def _filter_avspeak(value):
     return " ".join(w for w in result if w)
 
 
+def _filter_wind(value):
+    """Jinja2 filter: speak wind data in aviation format.
+
+    Usage: {{ weather.wind | wind }}
+      "270@12"    -> "two seven zero at one two"
+      "270@12G18" -> "two seven zero at one two gusts one eight"
+      "309@7G8"   -> "three zero niner at seven gusts eight"
+    """
+    s = str(value).strip()
+    # Parse wind format: DIR@SPDGgust or DIR@SPD
+    import re as _re
+    m = _re.match(r'^(\d+)@(\d+)(?:G(\d+))?$', s)
+    if not m:
+        return _filter_avspeak(s)
+    direction, speed, gust = m.group(1), m.group(2), m.group(3)
+    parts = [_filter_digits(direction), "at", _filter_digits(speed)]
+    if gust:
+        parts.extend(["gusts", _filter_digits(gust)])
+    return " ".join(parts)
+
+
 def _filter_time(value):
     """Jinja2 filter: speak time in aviation format.
 
@@ -228,6 +249,7 @@ def render_template(template_text, cfg=None, extra=None):
         env.filters["nato"] = _filter_nato
         env.filters["digits"] = _filter_digits
         env.filters["avspeak"] = _filter_avspeak
+        env.filters["wind"] = _filter_wind
         env.filters["time"] = _filter_time
         tmpl = env.from_string(template_text)
         return tmpl.render(**ctx)
@@ -279,14 +301,47 @@ def _tts_wav_path(tag, cfg):
     return f"{output_dir}/action_{safe_tag}.wav"
 
 
+TIME_VARYING_MARKERS = ("time.zulu", "time.utc", "time.utc_hhmm",
+                        "time.utc_hour", "time.utc_min")
+
+
+def _is_time_varying(template):
+    """Check if a Jinja2 template references time fields."""
+    return any(marker in template for marker in TIME_VARYING_MARKERS)
+
+
+def _tts_wav_path_timed(tag, minute_str, cfg):
+    """WAV path for a specific minute variant: action_8_clicks_1045.wav"""
+    output_dir = cfg["tts"]["output_dir"]
+    safe_tag = re.sub(r'[^a-zA-Z0-9]', '_', tag)
+    return f"{output_dir}/action_{safe_tag}_{minute_str}.wav"
+
+
+def _synthesize_with_engine(text, wav_path, engine, cfg):
+    """Synthesize text to wav_path, temporarily overriding engine if needed."""
+    from nanoawos.tts import synthesize
+    if engine != cfg["tts"].get("engine"):
+        original = cfg["tts"].get("engine")
+        cfg["tts"]["engine"] = engine
+        try:
+            synthesize(text, wav_path, cfg)
+        finally:
+            cfg["tts"]["engine"] = original
+    else:
+        synthesize(text, wav_path, cfg)
+
+
 def pregenerate_tts_actions(cfg=None):
     """Pre-generate WAV files for all TTS actions that use Piper.
 
-    Called every 5 minutes by the weather update service. Only regenerates
-    if the rendered text changed (dynamic Jinja2 templates) or the WAV
-    doesn't exist yet (first run / new action).
+    Called every 5 minutes by the weather update service.
 
-    Cloud TTS actions are skipped -- they're fast enough at click time.
+    For static templates: generates once, skips if text unchanged.
+    For time-varying templates (containing time.zulu etc.): generates
+    a WAV for each minute in the next 5-minute window so clicks
+    always get the exact current-minute version instantly.
+
+    Cloud TTS actions are skipped -- fast enough at click time.
     """
     if cfg is None:
         cfg = load_config()
@@ -294,7 +349,6 @@ def pregenerate_tts_actions(cfg=None):
     cache = _load_tts_cache()
     changed = False
 
-    # Collect all TTS actions from click_actions and transcription_reactions
     all_actions = []
     for key, action in cfg.get("click_actions", {}).items():
         if action.get("type") == "tts":
@@ -305,8 +359,6 @@ def pregenerate_tts_actions(cfg=None):
 
     for tag, action, extra_ctx in all_actions:
         engine = action.get("tts_engine", "") or cfg["tts"].get("engine", "piper")
-
-        # Only pre-generate for piper (slow). Cloud TTS is fast enough live.
         if engine not in ("piper", "wav_concat"):
             continue
 
@@ -314,33 +366,51 @@ def pregenerate_tts_actions(cfg=None):
         if not template:
             continue
 
-        rendered = render_template(template, cfg, extra_ctx)
-        wav_path = _tts_wav_path(tag, cfg)
-        cached_text = cache.get(wav_path, "")
+        if _is_time_varying(template):
+            # Generate a WAV for each minute in the next 5 minutes
+            from datetime import timedelta
+            now = datetime.now(timezone.utc)
+            for offset in range(6):  # current minute + next 5
+                future = now + timedelta(minutes=offset)
+                minute_str = future.strftime("%H%M")
+                wav_path = _tts_wav_path_timed(tag, minute_str, cfg)
 
-        # Skip if text unchanged AND wav file exists
-        if rendered == cached_text and os.path.exists(wav_path):
-            log.debug("TTS cache hit for %s (text unchanged)", tag)
-            continue
+                # Build time context for this specific minute
+                time_ctx = {
+                    "utc": future.strftime("%H:%M"),
+                    "utc_hour": future.strftime("%H"),
+                    "utc_min": future.strftime("%M"),
+                    "utc_hhmm": minute_str,
+                    "date": future.strftime("%Y-%m-%d"),
+                    "zulu": minute_str + "Z",
+                }
+                rendered = render_template(template, cfg, {**(extra_ctx or {}), "time": time_ctx})
 
-        # Need to (re)generate
-        log.info("Pre-generating TTS [%s]: %s", tag, rendered[:80])
-        try:
-            from nanoawos.tts import synthesize
-            if engine != cfg["tts"].get("engine"):
-                original = cfg["tts"].get("engine")
-                cfg["tts"]["engine"] = engine
+                if cache.get(wav_path) == rendered and os.path.exists(wav_path):
+                    continue
+
+                log.info("Pre-generating TTS [%s] for %sZ: %s", tag, minute_str, rendered[:60])
                 try:
-                    synthesize(rendered, wav_path, cfg)
-                finally:
-                    cfg["tts"]["engine"] = original
-            else:
-                synthesize(rendered, wav_path, cfg)
-            cache[wav_path] = rendered
-            changed = True
-            log.info("Pre-generated: %s", wav_path)
-        except Exception as e:
-            log.error("Pre-generation failed for %s: %s", tag, e)
+                    _synthesize_with_engine(rendered, wav_path, engine, cfg)
+                    cache[wav_path] = rendered
+                    changed = True
+                except Exception as e:
+                    log.error("Pre-generation failed for %s@%s: %s", tag, minute_str, e)
+        else:
+            # Static template -- generate once
+            rendered = render_template(template, cfg, extra_ctx)
+            wav_path = _tts_wav_path(tag, cfg)
+
+            if cache.get(wav_path) == rendered and os.path.exists(wav_path):
+                continue
+
+            log.info("Pre-generating TTS [%s]: %s", tag, rendered[:60])
+            try:
+                _synthesize_with_engine(rendered, wav_path, engine, cfg)
+                cache[wav_path] = rendered
+                changed = True
+            except Exception as e:
+                log.error("Pre-generation failed for %s: %s", tag, e)
 
     if changed:
         _save_tts_cache(cache)
@@ -374,33 +444,36 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
             log.warning("TTS action has no text template")
             return
         tts_engine = action.get("tts_engine", "") or cfg["tts"].get("engine", "piper")
-        wav_path = _tts_wav_path(tag, cfg)
         is_slow_engine = tts_engine in ("piper", "wav_concat")
 
-        # For slow engines (Piper): play the pre-generated WAV if it exists.
-        # It was built during the last weather update cycle (max 5 min old).
-        # Don't re-render the template -- that causes cache misses on
-        # time-varying fields (e.g. {{ time.zulu }} changes every minute).
-        if is_slow_engine and os.path.exists(wav_path):
-            log.info("TTS [%s] playing pre-generated: %s", tag, wav_path)
-            from nanoawos.audio import play_wav
-            play_wav(wav_path, cfg)
-            return
+        # For slow engines: look up pre-generated WAV
+        if is_slow_engine:
+            if _is_time_varying(template):
+                # Find the minute-specific WAV
+                minute_str = datetime.now(timezone.utc).strftime("%H%M")
+                wav_path = _tts_wav_path_timed(tag, minute_str, cfg)
+            else:
+                wav_path = _tts_wav_path(tag, cfg)
 
-        # For fast engines (cloud/OpenAI): render and generate live (~2s)
-        # Also used as fallback when no pre-generated WAV exists yet
+            if os.path.exists(wav_path):
+                log.info("TTS [%s] playing cached: %s", tag, wav_path)
+                from nanoawos.audio import play_wav
+                play_wav(wav_path, cfg)
+                return
+            # Fall back to any existing variant
+            fallback = _tts_wav_path(tag, cfg)
+            if os.path.exists(fallback):
+                log.info("TTS [%s] playing fallback: %s", tag, fallback)
+                from nanoawos.audio import play_wav
+                play_wav(fallback, cfg)
+                return
+            log.info("TTS [%s] no cached WAV, generating live...", tag)
+
+        # Cloud engine or no cached WAV -- generate live
         text = render_template(template, cfg, extra_ctx)
+        wav_path = _tts_wav_path(tag, cfg)
         log.info("TTS [%s] generating live (%s): %s", tag, tts_engine, text[:60])
-        from nanoawos.tts import synthesize
-        if tts_engine != cfg["tts"].get("engine"):
-            original = cfg["tts"].get("engine")
-            cfg["tts"]["engine"] = tts_engine
-            try:
-                synthesize(text, wav_path, cfg)
-            finally:
-                cfg["tts"]["engine"] = original
-        else:
-            synthesize(text, wav_path, cfg)
+        _synthesize_with_engine(text, wav_path, tts_engine, cfg)
 
         cache = _load_tts_cache()
         cache[wav_path] = text
