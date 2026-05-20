@@ -31,18 +31,24 @@ def main():
     import os
     has_noise_prof = os.path.exists(noise_prof)
 
+    gain_db = cfg.get("audio", {}).get("gain_db", 0)
+    normalize = cfg.get("audio", {}).get("normalize", False)
+    compand = cfg.get("audio", {}).get("compand", False)
+
     # Build sox effects chain
     sox_effects = ["highpass", str(cutoff)]
     if has_noise_prof:
         sox_effects += ["noisered", noise_prof, str(noise_amount)]
-        log.info("Audio bridge: dsnoop -> HPF@%dHz + noisered(%.1f) -> loopback",
-                 cutoff, noise_amount)
-    else:
-        log.info("Audio bridge: dsnoop -> HPF@%dHz -> loopback (no noise profile)",
-                 cutoff)
-        log.info("To enable noise reduction: capture profile with "
-                 "arecord -D default -f S16_LE -r 44100 -c 1 -d 2 /tmp/noise_sample.wav "
-                 "&& sox /tmp/noise_sample.wav -n noiseprof /tmp/noise.prof")
+    if compand:
+        # Compressor: boosts quiet voice, limits loud peaks
+        sox_effects += ["compand", "0.3,1", "6:-70,-60,-20", "-5", "-90", "0.2"]
+    if gain_db != 0:
+        sox_effects += ["gain", str(gain_db)]
+    if normalize:
+        sox_effects += ["norm", "-1"]  # normalize to -1dB headroom
+
+    effects_str = " ".join(sox_effects)
+    log.info("Audio bridge: dsnoop -> sox [%s] -> loopback", effects_str)
 
     rec = subprocess.Popen(
         ["arecord", "-D", "default", "-f", "S16_LE",
