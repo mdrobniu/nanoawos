@@ -123,28 +123,47 @@ def _ensure_silence_wav(cfg):
     return SILENCE_WAV
 
 
+def _ptt_key_up(cfg):
+    """Activate PTT and wait for the radio to key up before audio starts.
+
+    Two-layer approach:
+    1. Set GPIO high immediately (don't wait for GPIO watcher)
+    2. Sleep for ptt_pre_delay_ms to let the radio physically key up
+    3. Silence WAV in the queue provides additional safety margin
+    """
+    delay_ms = cfg.get("audio", {}).get("ptt_pre_delay_ms", 500)
+    try:
+        set_ptt(True, cfg)
+    except Exception:
+        pass  # GPIO may not be available (e.g. in tests)
+    if delay_ms > 0:
+        time.sleep(delay_ms / 1000.0)
+
+
 def play_playlist(name, cfg=None):
-    """Play a named playlist with silence lead-in for PTT key-up."""
+    """Play a named playlist with PTT key-up and silence lead-in."""
     if cfg is None:
         cfg = load_config()
+    _ptt_key_up(cfg)
     silence = _ensure_silence_wav(cfg)
     _mpc(["clear"], cfg)
     _mpc(["add", silence], cfg)
     _mpc(["load", name], cfg)
     _mpc(["play"], cfg)
-    log.info("Playing playlist: %s (with silence lead-in)", name)
+    log.info("Playing playlist: %s", name)
 
 
 def play_wav(wav_path, cfg=None):
-    """Play a WAV file with silence lead-in for PTT key-up."""
+    """Play a WAV file with PTT key-up and silence lead-in."""
     if cfg is None:
         cfg = load_config()
+    _ptt_key_up(cfg)
     silence = _ensure_silence_wav(cfg)
     _mpc(["clear"], cfg)
     _mpc(["add", silence], cfg)
     _mpc(["add", wav_path], cfg)
     _mpc(["play"], cfg)
-    log.info("Playing WAV: %s (with silence lead-in)", wav_path)
+    log.info("Playing WAV: %s", wav_path)
 
 
 def _get_mpd_state(cfg):
