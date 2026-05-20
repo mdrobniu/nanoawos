@@ -203,7 +203,42 @@
             </fieldset>
 
             <fieldset>
-                <legend>Audio</legend>
+                <legend>Audio Input</legend>
+                <div class="form-row">
+                    <label>Input Mode</label>
+                    <div style="display:flex;gap:0.5rem;align-items:center">
+                        <button type="button" onclick="switchAudioMode('analog')" class="btn btn-sm {{ 'btn-primary' if cfg.audio.get('input_mode','analog')=='analog' else 'btn-outline' }}" id="btn-analog">Analog (Cable)</button>
+                        <button type="button" onclick="switchAudioMode('sdr')" class="btn btn-sm {{ 'btn-primary' if cfg.audio.get('input_mode')=='sdr' else 'btn-outline' }}" id="btn-sdr">SDR (RTL-SDR)</button>
+                        <span class="hint" id="mode-hint"></span>
+                    </div>
+                </div>
+                <div id="sdr-settings" style="{{ '' if cfg.audio.get('input_mode')=='sdr' else 'display:none' }}">
+                    <div class="form-row">
+                        <label>Frequency (MHz)</label>
+                        <input name="sdr.frequency_mhz" type="number" step="0.005" value="{{ cfg.get('sdr',{}).get('frequency_mhz', 122.5) }}">
+                    </div>
+                    <div class="form-row">
+                        <label>Gain</label>
+                        <input name="sdr.gain" type="number" value="{{ cfg.get('sdr',{}).get('gain', 40) }}">
+                    </div>
+                    <div class="form-row">
+                        <label>Squelch</label>
+                        <input name="sdr.squelch" type="number" value="{{ cfg.get('sdr',{}).get('squelch', 50) }}">
+                    </div>
+                    <div class="form-row">
+                        <label>PPM Correction</label>
+                        <input name="sdr.ppm_correction" type="number" value="{{ cfg.get('sdr',{}).get('ppm_correction', 0) }}">
+                    </div>
+                    <div class="form-row">
+                        <label>Sample Rate</label>
+                        <input name="sdr.sample_rate" type="number" value="{{ cfg.get('sdr',{}).get('sample_rate', 12000) }}">
+                    </div>
+                    <p class="hint">Aviation AM band: 118.000-136.975 MHz. Channel spacing: 25kHz. Gain: 0-50 (start at 40). Squelch: 0=off, 50-200 typical.</p>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Audio Processing</legend>
                 <div class="form-row">
                     <label>PTT Pre-delay (ms)</label>
                     <input name="audio.ptt_pre_delay_ms" type="number" value="{{ cfg.audio.get('ptt_pre_delay_ms', 500) }}">
@@ -503,6 +538,22 @@ function deleteAudio(name) {
     if (!confirm('Delete ' + name + '?')) return;
     fetch('/api/audio/delete/' + name, {method:'DELETE'})
         .then(() => loadAudioFiles().then(renderAudioFiles));
+}
+
+// Audio mode switch
+function switchAudioMode(mode) {
+    const hint = document.getElementById('mode-hint');
+    hint.textContent = 'Switching to ' + mode + '...';
+    hint.style.color = '#f59e0b';
+    document.getElementById('btn-analog').className = 'btn btn-sm ' + (mode === 'analog' ? 'btn-primary' : 'btn-outline');
+    document.getElementById('btn-sdr').className = 'btn btn-sm ' + (mode === 'sdr' ? 'btn-primary' : 'btn-outline');
+    document.getElementById('sdr-settings').style.display = mode === 'sdr' ? '' : 'none';
+    fetch('/api/audio/switch-mode', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode})})
+        .then(r => r.json()).then(d => {
+            hint.textContent = d.status === 'ok' ? 'Switched to ' + mode : 'Error: ' + (d.error || '');
+            hint.style.color = d.status === 'ok' ? '#22c55e' : '#ef4444';
+            setTimeout(() => hint.textContent = '', 5000);
+        });
 }
 
 // Noise profile capture

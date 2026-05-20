@@ -16,13 +16,25 @@ tts:
   output_dir: "/run/nanoawos"    # tmpfs ramdisk -- no SD card wear, lost on reboot (regenerated)
 
 audio:
+  input_mode: "analog"     # "analog" (audio cable) or "sdr" (RTL-SDR)
   mpd_host: "localhost"
   mpd_port: 6600
   gpio_pin: 201
   alsa_device: "hw:2,0"
-  filter_cutoff_hz: 300  # High-pass cutoff for buzz removal (aviation voice: 300-3400Hz)
-  noise_reduction: 0.3   # Sox noisered amount (0.0-1.0, higher = more aggressive)
-  ptt_pre_delay_ms: 500    # Activate PTT this many ms before audio starts (prevents clipping)
+  filter_cutoff_hz: 300    # High-pass cutoff for buzz removal
+  noise_reduction: 0.3     # Sox noisered amount (0.0-1.0)
+  gain_db: 0               # Volume boost in dB (6=2x louder)
+  compand: false           # Auto-level voice compression
+  ptt_pre_delay_ms: 500    # Silence lead-in before audio playback
+
+# SDR receiver (RTL-SDR) - alternative to analog audio cable for receiving
+sdr:
+  frequency_mhz: 122.5      # Aviation frequency in MHz (118.000-136.975)
+  gain: 40                   # Tuner gain (0-50, higher = more sensitive but more noise)
+  squelch: 50                # Squelch level (0=off, higher = more aggressive)
+  ppm_correction: 0          # Frequency correction in PPM (measure with rtl_test -p)
+  sample_rate: 12000         # Audio sample rate (12000 is good for voice)
+  device_index: 0            # RTL-SDR device index (if multiple dongles)
 
 tap:
   short_clicks: 4

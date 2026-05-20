@@ -336,13 +336,28 @@ class ClickDetector:
         return self.pa.get_default_input_device_info()["index"]
 
     def open_stream(self):
-        device_index = self.find_input_device()
-        self.stream = self.pa.open(
-            format=FORMAT, channels=CHANNELS, rate=RATE,
-            input=True, input_device_index=device_index,
-            frames_per_buffer=FRAME_SAMPLES,
-        )
-        log.info("Audio stream opened on device %d", device_index)
+        input_mode = self.cfg.get("audio", {}).get("input_mode", "analog")
+        self._sdr_fifo = None
+
+        if input_mode == "sdr":
+            # In SDR mode, read from the FIFO that the SDR pipeline writes to
+            fifo_path = "/tmp/nanoawos_sdr_audio"
+            sdr_rate = self.cfg.get("sdr", {}).get("sample_rate", 12000)
+            log.info("SDR mode: reading from FIFO %s at %dHz", fifo_path, sdr_rate)
+            self._sdr_fifo = open(fifo_path, "rb")
+            self._sdr_rate = sdr_rate
+            self._sdr_chunk = sdr_rate // 20  # 50ms chunks
+            # Update filter for SDR sample rate
+            from nanoawos.audiofilter import HighPassFilter
+            self.hpf = HighPassFilter(cutoff_hz=300, sample_rate=sdr_rate)
+        else:
+            device_index = self.find_input_device()
+            self.stream = self.pa.open(
+                format=FORMAT, channels=CHANNELS, rate=RATE,
+                input=True, input_device_index=device_index,
+                frames_per_buffer=FRAME_SAMPLES,
+            )
+            log.info("Analog mode: audio stream on device %d", device_index)
 
     def calibrate(self):
         """Seed noise floor tracker."""
@@ -456,27 +471,35 @@ class ClickDetector:
         except Exception:
             pass
 
+    def _read_block(self):
+        """Read one audio block from the appropriate source."""
+        if self._sdr_fifo:
+            data = self._sdr_fifo.read(self._sdr_chunk * 2)
+            if not data:
+                raise IOError("SDR FIFO closed")
+            return data
+        return self.stream.read(FRAME_SAMPLES, exception_on_overflow=False)
+
     def listen(self):
         if self._is_transmitting():
             try:
-                self.stream.read(FRAME_SAMPLES, exception_on_overflow=False)
+                self._read_block()
             except IOError:
                 pass
             self.state_machine.reset()
             self._write_debug()
             return
 
-        # Check for calibration requests periodically
         self._check_calibration_mode()
 
         try:
-            block = self.stream.read(FRAME_SAMPLES, exception_on_overflow=False)
+            block = self._read_block()
         except IOError as e:
             self.error_count += 1
             log.warning("Audio read error #%d: %s", self.error_count, e)
             return
 
-        # Filter out 50Hz mains hum / cable buzz
+        # Filter (in SDR mode, sox already filtered but HPF is cheap insurance)
         block = self.hpf.process_block(block)
 
         now = time.monotonic()

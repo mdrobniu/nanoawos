@@ -1,0 +1,18 @@
+[Unit]
+Description=NanoAWOS SDR Receiver (RTL-SDR Aviation AM)
+After=multi-user.target
+# Conflicts with analog audiobridge - only one should run
+Conflicts=nanoawos-audiobridge.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+ExecStart=/usr/bin/python3 -m nanoawos.sdr
+WorkingDirectory=/opt/nanoawos
+Environment=PYTHONPATH=/opt/nanoawos
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

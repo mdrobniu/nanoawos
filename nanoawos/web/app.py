@@ -94,6 +94,36 @@ def api_play(name):
     return jsonify({"status": "playing", "playlist": name})
 
 
+@app.route("/api/audio/switch-mode", methods=["POST"])
+def api_switch_audio_mode():
+    """Switch between analog and SDR input mode."""
+    data = request.get_json() or {}
+    mode = data.get("mode", "analog")
+    if mode not in ("analog", "sdr"):
+        return jsonify({"error": "Invalid mode, use 'analog' or 'sdr'"}), 400
+
+    # Update config
+    cfg = load_config()
+    cfg.setdefault("audio", {})["input_mode"] = mode
+    save_config(cfg)
+
+    # Stop both, start the right one
+    subprocess.run(["sudo", "systemctl", "stop", "nanoawos-audiobridge"], capture_output=True)
+    subprocess.run(["sudo", "systemctl", "stop", "nanoawos-sdr"], capture_output=True)
+
+    if mode == "sdr":
+        subprocess.run(["sudo", "systemctl", "start", "nanoawos-sdr"], capture_output=True)
+    else:
+        subprocess.run(["sudo", "systemctl", "start", "nanoawos-audiobridge"], capture_output=True)
+
+    # Restart DarkIce to pick up loopback changes
+    subprocess.run(["sudo", "systemctl", "restart", "darkice"], capture_output=True)
+    # Restart tap detector (reads from different source in SDR mode)
+    subprocess.run(["sudo", "systemctl", "restart", "nanoawos-tap"], capture_output=True)
+
+    return jsonify({"status": "ok", "mode": mode})
+
+
 @app.route("/api/tap/calibrate", methods=["POST"])
 def api_tap_calibrate():
     """Start calibration mode. POST with {"clicks": N} to capture N sequences."""
@@ -330,7 +360,7 @@ def api_config_put():
 def api_service_action(name, action):
     allowed_services = [
         "nanoawos-weather.timer", "nanoawos-tap", "nanoawos-gpio",
-        "nanoawos-web", "nanoawos-audiobridge", "darkice", "icecast2", "mpd",
+        "nanoawos-web", "nanoawos-audiobridge", "nanoawos-sdr", "darkice", "icecast2", "mpd",
     ]
     if name not in allowed_services:
         return jsonify({"error": "Service not allowed"}), 403
