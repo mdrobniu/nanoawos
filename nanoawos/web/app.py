@@ -227,8 +227,11 @@ def api_status():
 @app.route("/api/config", methods=["GET"])
 def api_config_get():
     cfg = load_config()
-    # Remove internal keys
-    return jsonify({k: v for k, v in cfg.items() if not k.startswith("_")})
+    out = {k: v for k, v in cfg.items() if not k.startswith("_")}
+    # Normalize click_actions keys to strings for JSON
+    if "click_actions" in out:
+        out["click_actions"] = {str(k): v for k, v in out["click_actions"].items()}
+    return jsonify(out)
 
 
 @app.route("/api/config", methods=["PUT"])
@@ -243,7 +246,10 @@ def api_config_put():
     for section, values in new_cfg.items():
         if section.startswith("_"):
             continue
-        if section in replace_sections:
+        if section == "click_actions" and isinstance(values, dict):
+            # Normalize keys to int (JS sends "4", YAML needs 4)
+            cfg[section] = {int(k): v for k, v in values.items()}
+        elif section in replace_sections:
             cfg[section] = values
         elif isinstance(values, dict) and section in cfg and isinstance(cfg[section], dict):
             cfg[section].update(values)
