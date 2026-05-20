@@ -227,6 +227,10 @@ class TranscriptionService:
         }
         self._save_entry(entry)
 
+        # Execute transcription reactions
+        from nanoawos.actions import execute_transcription_reactions
+        execute_transcription_reactions(text, action, self.cfg)
+
     def listen(self):
         """Process one audio block."""
         # Skip when we're transmitting (playing weather)

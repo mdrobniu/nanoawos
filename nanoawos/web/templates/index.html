@@ -98,12 +98,24 @@
     <!-- Click Actions -->
     <section class="card">
         <h2>Click Actions</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Map click counts to actions. TTS templates support Jinja2 variables: weather.wind, station.name, time.zulu, etc.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Map click counts to actions. TTS templates: &#123;&#123; weather.wind &#125;&#125;, &#123;&#123; station.name &#125;&#125;, &#123;&#123; time.zulu &#125;&#125;</p>
         <div id="click-actions-editor"></div>
         <div class="actions" style="margin-top:0.75rem">
-            <button onclick="saveClickActions()" class="btn btn-primary">Save Actions</button>
+            <button onclick="saveClickActions()" class="btn btn-primary">Save Click Actions</button>
         </div>
         <div id="actions-status"></div>
+    </section>
+
+    <!-- Transcription Reactions -->
+    <section class="card">
+        <h2>Transcription Reactions</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Trigger actions when keywords appear in transcribed radio text. Regex supported. Extra template vars: &#123;&#123; transcript.text &#125;&#125;, &#123;&#123; transcript.action &#125;&#125;</p>
+        <div id="tx-reactions-editor"></div>
+        <div class="actions" style="margin-top:0.5rem">
+            <button onclick="addReaction()" class="btn btn-outline btn-sm">+ Add Rule</button>
+            <button onclick="saveTxReactions()" class="btn btn-primary">Save Reactions</button>
+        </div>
+        <div id="tx-reactions-status"></div>
     </section>
 
     <!-- Configuration -->
@@ -315,9 +327,6 @@ function buildActionEditor(actions) {
     }
     c.innerHTML = html;
 }
-// Load actions on page load
-fetch('/api/config').then(r=>r.json()).then(cfg => buildActionEditor(cfg.click_actions||{}));
-
 function saveClickActions() {
     const actions = {};
     for (let n = 4; n <= 12; n++) {
@@ -342,6 +351,66 @@ function saveClickActions() {
         setTimeout(() => s.textContent = '', 5000);
     });
 }
+
+// Transcription reactions editor
+let txReactions = [];
+function buildTxReactionsEditor(rules) {
+    txReactions = rules || [];
+    renderTxReactions();
+}
+function renderTxReactions() {
+    const c = document.getElementById('tx-reactions-editor');
+    if (!txReactions.length) { c.innerHTML = '<p class="hint">No reaction rules. Click "+ Add Rule" to create one.</p>'; return; }
+    c.innerHTML = txReactions.map((r, i) => {
+        const t = r.type || 'mqtt';
+        return `<div class="action-row" style="align-items:flex-start">
+            <button onclick="removeReaction(${i})" class="btn btn-sm" style="background:#7f1d1d;color:#f87171;padding:0.2rem 0.4rem" title="Remove">X</button>
+            <input value="${(r.label||'').replace(/"/g,'&quot;')}" placeholder="Label" style="width:100px" onchange="txReactions[${i}].label=this.value" class="action-label">
+            <select onchange="txReactions[${i}].match_field=this.value" class="action-type" style="width:70px">
+                <option value="text" ${(r.match_field||'text')==='text'?'selected':''}>Text</option>
+                <option value="action" ${r.match_field==='action'?'selected':''}>Action</option>
+            </select>
+            <input value="${(r.match||'').replace(/"/g,'&quot;')}" placeholder="Regex: mayday|emergency" style="flex:1;min-width:120px" onchange="txReactions[${i}].match=this.value" class="action-label" title="Regex match pattern">
+            <select onchange="txReactions[${i}].type=this.value;renderTxReactions()" class="action-type">
+                <option value="mqtt" ${t==='mqtt'?'selected':''}>MQTT</option>
+                <option value="tts" ${t==='tts'?'selected':''}>TTS</option>
+                <option value="weather_full" ${t==='weather_full'?'selected':''}>Full weather</option>
+                <option value="weather_wind" ${t==='weather_wind'?'selected':''}>Wind report</option>
+                <option value="none" ${t==='none'?'selected':''}>None</option>
+            </select>
+            ${t==='tts'?`<select onchange="txReactions[${i}].tts_engine=this.value" class="action-type" style="width:80px">
+                <option value="" ${!r.tts_engine?'selected':''}>Default</option>
+                <option value="piper" ${r.tts_engine==='piper'?'selected':''}>Piper</option>
+                <option value="cloud" ${r.tts_engine==='cloud'?'selected':''}>OpenAI</option>
+            </select>
+            <input value="${(r.text||'').replace(/"/g,'&quot;')}" placeholder="TTS template..." style="flex:2;min-width:150px" onchange="txReactions[${i}].text=this.value" class="action-extra">`:''}
+            ${t==='mqtt'?`<input value="${(r.topic||'').replace(/"/g,'&quot;')}" placeholder="MQTT topic" style="flex:1;min-width:120px" onchange="txReactions[${i}].topic=this.value" class="action-label">`:''}
+        </div>`;
+    }).join('');
+}
+function addReaction() {
+    txReactions.push({label:'', match:'', match_field:'text', type:'mqtt', topic:'nanoawos/transcription'});
+    renderTxReactions();
+}
+function removeReaction(i) {
+    txReactions.splice(i, 1);
+    renderTxReactions();
+}
+function saveTxReactions() {
+    fetch('/api/config', {method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({transcription_reactions: txReactions})
+    }).then(r=>r.json()).then(() => {
+        const s = document.getElementById('tx-reactions-status');
+        s.textContent = 'Reactions saved. Takes effect on next transcription.';
+        s.className = 'success';
+        setTimeout(() => s.textContent = '', 5000);
+    });
+}
+// Load on page load
+fetch('/api/config').then(r=>r.json()).then(cfg => {
+    buildActionEditor(cfg.click_actions||{});
+    buildTxReactionsEditor(cfg.transcription_reactions||[]);
+});
 
 function playWeather(type) {
     fetch('/api/play/' + type, {method: 'POST'})

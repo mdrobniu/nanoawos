@@ -86,6 +86,34 @@ data_sources: []
   #   url: "https://api.example.com/notams?icao=XXXX"
   #   cache_ttl: 3600
 
+# Transcription reactions: trigger actions when keywords appear in transcribed radio text
+# Same action types as click_actions: tts, mqtt, weather_full, weather_wind, none
+# Extra Jinja2 context: {{ transcript.text }}, {{ transcript.action }}
+transcription_reactions:
+  - label: "Emergency detected"
+    match: "mayday|pan pan|emergency"
+    match_field: "text"
+    type: "mqtt"
+    topic: "nanoawos/emergency"
+    payload: '{"text": "{{ transcript.text }}", "time": "{{ time.zulu }}"}'
+  - label: "Landing announced"
+    match: "final|landing|runway"
+    match_field: "text"
+    type: "mqtt"
+    topic: "nanoawos/traffic/landing"
+  - label: "Traffic in pattern"
+    match: "downwind|crosswind|base|pattern"
+    match_field: "text"
+    type: "mqtt"
+    topic: "nanoawos/traffic/pattern"
+  # Example: TTS read-back on any actionable item detected by GPT
+  # - label: "Action detected"
+  #   match: ".*"
+  #   match_field: "action"
+  #   type: "tts"
+  #   tts_engine: "cloud"
+  #   text: "Traffic alert. {{ transcript.action }}"
+
 mqtt:
   enabled: false
   broker: "localhost"
