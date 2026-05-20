@@ -128,8 +128,11 @@ def api_switch_audio_mode():
     import time as _time
     _time.sleep(2)
 
+    # Order matters: DarkIce must open loopshare dsnoop first, then tap connects
+    subprocess.run(["sudo", "systemctl", "stop", "nanoawos-tap"], capture_output=True)
     subprocess.run(["sudo", "systemctl", "restart", "darkice"], capture_output=True)
-    subprocess.run(["sudo", "systemctl", "restart", "nanoawos-tap"], capture_output=True)
+    _time.sleep(1)
+    subprocess.run(["sudo", "systemctl", "start", "nanoawos-tap"], capture_output=True)
 
     return jsonify({"status": "ok", "mode": mode})
 

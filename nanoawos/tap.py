@@ -344,10 +344,10 @@ class ClickDetector:
         if input_mode == "sdr":
             # In SDR mode, read from loopback (shared via plughw)
             sdr_rate = self.cfg.get("sdr", {}).get("sample_rate", 12000)
-            log.info("SDR mode: reading from plughw:1,1 at %dHz", sdr_rate)
+            log.info("SDR mode: reading from plug:loopshare at %dHz", sdr_rate)
             import subprocess
             self._sdr_proc = subprocess.Popen(
-                ["arecord", "-D", "plughw:1,1", "-f", "S16_LE",
+                ["arecord", "-D", "plug:loopshare", "-f", "S16_LE",
                  "-r", str(sdr_rate), "-c", "1", "-t", "raw"],
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             )

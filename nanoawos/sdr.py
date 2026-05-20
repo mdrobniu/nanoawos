@@ -55,8 +55,10 @@ def main():
         "-d", str(device_index),
         "-p", str(ppm),
     ]
-    if squelch > 0:
-        rtl_cmd += ["-l", str(squelch)]
+    # Note: do NOT use rtl_fm squelch (-l). It stops output entirely when
+    # squelch is closed, starving the loopback pipeline (XRUN). Instead,
+    # our click detector's Schmitt trigger handles signal/silence detection.
+    # The squelch config value is kept for future use (e.g. rtl_airband).
 
     # Build sox effects chain (same as audiobridge)
     sox_effects = ["highpass", str(cutoff)]

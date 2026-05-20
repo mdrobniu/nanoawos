@@ -1,6 +1,6 @@
 [Unit]
 Description=NanoAWOS Click Detector
-After=multi-user.target mpd.service
+After=multi-user.target mpd.service darkice.service
 StartLimitIntervalSec=0
 
 [Service]
