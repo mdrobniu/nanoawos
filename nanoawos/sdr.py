@@ -90,13 +90,6 @@ def main():
         stdin=sox.stdout, stderr=subprocess.DEVNULL,
     )
 
-    play = subprocess.Popen(
-        ["aplay", "-D", "hw:1,0", "-f", "S16_LE",
-         "-r", str(sample_rate), "-c", "1", "-t", "raw",
-         "--buffer-size", str(sample_rate // 5)],
-        stdin=sox.stdout, stderr=subprocess.DEVNULL,
-    )
-
     rtl.stdout.close()
     sox.stdout.close()
 
