@@ -12,6 +12,10 @@ from nanoawos.actions import (
     pregenerate_tts_actions,
     render_template,
     _tts_wav_path,
+    _filter_nato,
+    _filter_digits,
+    _filter_avspeak,
+    _filter_time,
 )
 
 
@@ -53,6 +57,91 @@ def mock_metar_files():
 # ---------------------------------------------------------------------------
 # render_template
 # ---------------------------------------------------------------------------
+
+class TestAviationFilters:
+    """Tests for NATO/aviation Jinja2 filters."""
+
+    def test_nato_letters(self):
+        assert _filter_nato("ABCZ") == "alfa bravo charlie zulu"
+
+    def test_nato_lowercase(self):
+        assert _filter_nato("epmy") == "echo papa mike yankee"
+
+    def test_nato_single_letter(self):
+        assert _filter_nato("A") == "alfa"
+
+    def test_digits_number(self):
+        assert _filter_digits(270) == "two seven zero"
+
+    def test_digits_string(self):
+        assert _filter_digits("1013") == "one zero one three"
+
+    def test_digits_negative(self):
+        assert _filter_digits("-5") == "minus five"
+
+    def test_digits_decimal(self):
+        assert _filter_digits("29.92") == "two niner decimal niner two"
+
+    def test_digits_niner(self):
+        assert _filter_digits(9) == "niner"
+
+    def test_avspeak_pure_digits(self):
+        assert _filter_avspeak("270") == "two seven zero"
+
+    def test_avspeak_pure_letters_short(self):
+        """Short letter sequences -> NATO."""
+        assert _filter_avspeak("AB") == "alfa bravo"
+
+    def test_avspeak_icao(self):
+        assert _filter_avspeak("ZZZZ") == "zulu zulu zulu zulu"
+
+    def test_avspeak_word_passthrough(self):
+        """Long words (>4 chars) are not spelled out."""
+        assert _filter_avspeak("temperature") == "temperature"
+        assert _filter_avspeak("weather") == "weather"
+        assert _filter_avspeak("gusts") == "gusts"
+
+    def test_avspeak_short_word_nato(self):
+        """Short letter strings (<=4 chars) are NATO spelled."""
+        assert _filter_avspeak("wind") == "whiskey india november delta"
+        assert _filter_avspeak("QNH") == "quebec november hotel"
+
+    def test_avspeak_wind_format(self):
+        """Wind like '270@12' -> spoken digits with 'at'."""
+        assert _filter_avspeak("270@12") == "two seven zero at one two"
+
+    def test_avspeak_single_letter(self):
+        assert _filter_avspeak("A") == "alfa"
+
+    def test_avspeak_mixed(self):
+        assert _filter_avspeak("R27") == "romeo two seven"
+
+    def test_filter_in_template(self, sample_config, mock_metar_files):
+        """Filters work inside Jinja2 templates."""
+        result = render_template('{{ "270" | digits }}', sample_config)
+        assert result == "two seven zero"
+
+    def test_nato_filter_in_template(self, sample_config, mock_metar_files):
+        result = render_template('{{ "ABCD" | nato }}', sample_config)
+        assert result == "alfa bravo charlie delta"
+
+    def test_avspeak_filter_in_template(self, sample_config, mock_metar_files):
+        result = render_template('{{ "R15" | avspeak }}', sample_config)
+        assert result == "romeo one five"
+
+    def test_time_with_zulu(self):
+        assert _filter_time("1700Z") == "one seven zero zero zulu"
+
+    def test_time_without_zulu(self):
+        assert _filter_time("0945") == "zero niner four five"
+
+    def test_time_lowercase_z(self):
+        assert _filter_time("1030z") == "one zero three zero zulu"
+
+    def test_time_filter_in_template(self, sample_config, mock_metar_files):
+        result = render_template('{{ "1700Z" | time }}', sample_config)
+        assert result == "one seven zero zero zulu"
+
 
 class TestRenderTemplate:
     """Tests for the render_template function."""

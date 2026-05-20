@@ -103,10 +103,119 @@ def get_template_context(cfg=None, extra=None):
     return ctx
 
 
+# NATO/ICAO phonetic alphabet
+NATO_ALPHABET = {
+    "a": "alfa", "b": "bravo", "c": "charlie", "d": "delta",
+    "e": "echo", "f": "foxtrot", "g": "golf", "h": "hotel",
+    "i": "india", "j": "juliett", "k": "kilo", "l": "lima",
+    "m": "mike", "n": "november", "o": "oscar", "p": "papa",
+    "q": "quebec", "r": "romeo", "s": "sierra", "t": "tango",
+    "u": "uniform", "v": "victor", "w": "whiskey", "x": "x-ray",
+    "y": "yankee", "z": "zulu",
+}
+
+# Aviation digit pronunciation
+AVIATION_DIGITS = {
+    "0": "zero", "1": "one", "2": "two", "3": "three", "4": "four",
+    "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "niner",
+}
+
+
+def _filter_nato(value):
+    """Jinja2 filter: spell out as NATO phonetic alphabet.
+
+    Usage: {{ "ABCD" | nato }} -> "alfa bravo charlie delta"
+    """
+    return " ".join(NATO_ALPHABET.get(c.lower(), c) for c in str(value) if c.strip())
+
+
+def _filter_digits(value):
+    """Jinja2 filter: read digits individually (aviation style).
+
+    Usage: {{ 270 | digits }} -> "two seven zero"
+           {{ "1013" | digits }} -> "one zero one three"
+    Passes through non-digit characters (minus sign, decimal point).
+    """
+    result = []
+    for c in str(value):
+        if c in AVIATION_DIGITS:
+            result.append(AVIATION_DIGITS[c])
+        elif c == "-":
+            result.append("minus")
+        elif c == ".":
+            result.append("decimal")
+        elif c.strip():
+            result.append(c)
+    return " ".join(result)
+
+
+def _filter_avspeak(value):
+    """Jinja2 filter: auto-detect and speak in aviation style.
+
+    - Pure digits/decimals -> digit-by-digit ("270" -> "two seven zero")
+    - Pure letters -> NATO phonetic ("AB" -> "alfa bravo")
+    - Mixed -> each char spoken appropriately
+    - Words (len > 1 with letters) -> left as-is
+
+    Usage: {{ weather.wind | avspeak }}
+           {{ station.icao | avspeak }}
+    """
+    s = str(value).strip()
+    # If it contains spaces, treat each word separately
+    if " " in s:
+        return " ".join(_filter_avspeak(word) for word in s.split())
+    # Short all-alpha strings (<=4 chars like ICAO codes) -> NATO
+    # Long all-alpha strings (>4 chars like "temperature") -> leave as words
+    if s.isalpha() and len(s) > 4:
+        return s
+
+    result = []
+    for c in s:
+        cl = c.lower()
+        if cl in AVIATION_DIGITS:
+            result.append(AVIATION_DIGITS[cl])
+        elif cl in NATO_ALPHABET:
+            result.append(NATO_ALPHABET[cl])
+        elif c == "-":
+            result.append("minus")
+        elif c == ".":
+            result.append("decimal")
+        elif c == "@":
+            result.append("at")
+        elif c == "/":
+            result.append("")
+        elif c.strip():
+            result.append(c)
+    return " ".join(w for w in result if w)
+
+
+def _filter_time(value):
+    """Jinja2 filter: speak time in aviation format.
+
+    Usage: {{ time.zulu | time }}   -> "one seven zero zero zulu"
+           {{ "1700Z" | time }}     -> "one seven zero zero zulu"
+           {{ "0945" | time }}      -> "zero niner four five"
+    Strips Z suffix and appends "zulu", digits spoken individually.
+    """
+    s = str(value).strip()
+    if s.upper().endswith("Z"):
+        s = s[:-1]
+        suffix = " zulu"
+    else:
+        suffix = ""
+    return _filter_digits(s) + suffix
+
+
 def render_template(template_text, cfg=None, extra=None):
-    """Render a Jinja2 template string with all data sources."""
+    """Render a Jinja2 template string with all data sources.
+
+    Available filters:
+      {{ "ABCD" | nato }}     -> "alfa bravo charlie delta"
+      {{ 270 | digits }}      -> "two seven zero"
+      {{ value | avspeak }}   -> auto-detect letters/digits
+    """
     try:
-        from jinja2 import Template
+        from jinja2 import Environment
     except ImportError:
         ctx = get_template_context(cfg, extra)
         try:
@@ -115,7 +224,13 @@ def render_template(template_text, cfg=None, extra=None):
             return template_text
     ctx = get_template_context(cfg, extra)
     try:
-        return Template(template_text).render(**ctx)
+        env = Environment()
+        env.filters["nato"] = _filter_nato
+        env.filters["digits"] = _filter_digits
+        env.filters["avspeak"] = _filter_avspeak
+        env.filters["time"] = _filter_time
+        tmpl = env.from_string(template_text)
+        return tmpl.render(**ctx)
     except Exception as e:
         log.error("Template render error: %s", e)
         return template_text
