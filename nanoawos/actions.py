@@ -373,20 +373,24 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
         if not template:
             log.warning("TTS action has no text template")
             return
-        text = render_template(template, cfg, extra_ctx)
         tts_engine = action.get("tts_engine", "") or cfg["tts"].get("engine", "piper")
         wav_path = _tts_wav_path(tag, cfg)
+        is_slow_engine = tts_engine in ("piper", "wav_concat")
 
-        # Check if pre-generated WAV matches current text (instant playback)
-        cache = _load_tts_cache()
-        if cache.get(wav_path) == text and os.path.exists(wav_path):
-            log.info("TTS [%s] playing cached: %s", tag, text[:60])
+        # For slow engines (Piper): play the pre-generated WAV if it exists.
+        # It was built during the last weather update cycle (max 5 min old).
+        # Don't re-render the template -- that causes cache misses on
+        # time-varying fields (e.g. {{ time.zulu }} changes every minute).
+        if is_slow_engine and os.path.exists(wav_path):
+            log.info("TTS [%s] playing pre-generated: %s", tag, wav_path)
             from nanoawos.audio import play_wav
             play_wav(wav_path, cfg)
             return
 
-        # Not cached -- generate now (fast for cloud, slow for piper)
-        log.info("TTS [%s] generating live: %s", tag, text[:60])
+        # For fast engines (cloud/OpenAI): render and generate live (~2s)
+        # Also used as fallback when no pre-generated WAV exists yet
+        text = render_template(template, cfg, extra_ctx)
+        log.info("TTS [%s] generating live (%s): %s", tag, tts_engine, text[:60])
         from nanoawos.tts import synthesize
         if tts_engine != cfg["tts"].get("engine"):
             original = cfg["tts"].get("engine")
@@ -398,7 +402,7 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
         else:
             synthesize(text, wav_path, cfg)
 
-        # Update cache
+        cache = _load_tts_cache()
         cache[wav_path] = text
         _save_tts_cache(cache)
 
