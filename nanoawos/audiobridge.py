@@ -1,27 +1,19 @@
-"""Audio bridge: reads from mic (dsnoop), filters, writes to ALSA loopback.
+"""Audio bridge: reads from mic (dsnoop), filters with sox, writes to ALSA loopback.
 
-This daemon sits between the microphone and DarkIce/Icecast, applying
-a high-pass filter to remove 50Hz mains hum from the audio cable.
+Uses sox for C-native high-pass filtering -- near-zero CPU on ARM.
 
-Pipeline: dsnoop (hw:2,0 shared) -> high-pass filter -> hw:1,0 (loopback write)
-DarkIce reads from: hw:1,1 (loopback read) -> clean audio -> Icecast
+Pipeline: arecord (dsnoop) -> sox (high-pass) -> aplay (loopback)
+DarkIce reads from loopback -> clean audio -> Icecast
 """
 
 import logging
-import os
 import signal
 import subprocess
 import sys
 
-from nanoawos.audiofilter import HighPassFilter
 from nanoawos.config import load_config
 
 log = logging.getLogger(__name__)
-
-INPUT_RATE = 44100   # dsnoop captures at 44100
-OUTPUT_RATE = 48000  # loopback outputs at 48000 (Opus encoder requirement)
-CHANNELS = 1
-CHUNK_FRAMES = 2205  # 50ms at 44100
 
 
 def main():
@@ -31,45 +23,46 @@ def main():
 
     cfg = load_config()
     cutoff = cfg.get("audio", {}).get("filter_cutoff_hz", 300)
+    rate = 44100
 
-    hpf = HighPassFilter(cutoff_hz=cutoff, sample_rate=OUTPUT_RATE)
-    chunk_bytes = CHUNK_FRAMES * 2  # 16-bit mono
+    log.info("Audio bridge: dsnoop -> sox HPF@%dHz -> loopback @%dHz", cutoff, rate)
 
-    log.info("Audio bridge starting: dsnoop@%d -> HPF@%dHz -> loopback@%d",
-             INPUT_RATE, cutoff, OUTPUT_RATE)
-
+    # arecord -> sox highpass -> aplay, all piped in C, minimal CPU
     rec = subprocess.Popen(
         ["arecord", "-D", "default", "-f", "S16_LE",
-         "-r", str(OUTPUT_RATE), "-c", str(CHANNELS), "-t", "raw",
-         "--buffer-size", str(CHUNK_FRAMES * 4)],
+         "-r", str(rate), "-c", "1", "-t", "raw",
+         "--buffer-size", "8820"],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    )
+    sox = subprocess.Popen(
+        ["sox", "-t", "raw", "-r", str(rate), "-e", "signed", "-b", "16", "-c", "1", "-",
+         "-t", "raw", "-r", str(rate), "-e", "signed", "-b", "16", "-c", "1", "-",
+         "highpass", str(cutoff)],
+        stdin=rec.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
     )
     play = subprocess.Popen(
         ["aplay", "-D", "hw:1,0", "-f", "S16_LE",
-         "-r", str(OUTPUT_RATE), "-c", str(CHANNELS), "-t", "raw",
-         "--buffer-size", str(CHUNK_FRAMES * 4)],
-        stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
+         "-r", str(rate), "-c", "1", "-t", "raw",
+         "--buffer-size", "8820"],
+        stdin=sox.stdout, stderr=subprocess.DEVNULL,
     )
 
-    log.info("Audio bridge running (PID rec=%d play=%d)", rec.pid, play.pid)
+    # Close our copies of the pipe fds so signals propagate
+    rec.stdout.close()
+    sox.stdout.close()
+
+    log.info("Audio bridge running (rec=%d sox=%d play=%d)", rec.pid, sox.pid, play.pid)
 
     try:
-        while True:
-            data = rec.stdout.read(chunk_bytes)
-            if not data:
-                log.warning("arecord ended, restarting...")
-                break
-            filtered = hpf.process_block(data)
-            try:
-                play.stdin.write(filtered)
-            except BrokenPipeError:
-                log.warning("aplay ended, restarting...")
-                break
+        play.wait()
     except KeyboardInterrupt:
         pass
     finally:
-        rec.terminate()
-        play.terminate()
+        for p in [rec, sox, play]:
+            try:
+                p.terminate()
+            except Exception:
+                pass
         log.info("Audio bridge stopped")
 
 
