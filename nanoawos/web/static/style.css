@@ -1,6 +1,8 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.5; }
-.container { max-width: 800px; margin: 0 auto; padding: 1rem; }
+.container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+.grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.full-width { grid-column: 1 / -1; }
 header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid #334155; margin-bottom: 1rem; }
 header h1 { font-size: 1.5rem; color: #f8fafc; }
 .icao { color: #38bdf8; }
@@ -79,7 +81,8 @@ legend { color: #94a3b8; font-size: 0.85rem; padding: 0 0.5rem; }
 .tx-text { color: #e2e8f0; font-size: 0.9rem; }
 .tx-action { margin-top: 0.35rem; padding: 0.3rem 0.5rem; background: #1a2744; border-radius: 4px; color: #f59e0b; font-size: 0.85rem; border-left: 2px solid #f59e0b; }
 
-@media (max-width: 600px) {
+@media (max-width: 900px) {
+    .grid-2col { grid-template-columns: 1fr; }
     .weather-grid { grid-template-columns: 1fr; }
     .form-row { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
     .form-row label { min-width: auto; }

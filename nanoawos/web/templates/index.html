@@ -13,6 +13,8 @@
         <span class="uptime">Up {{ "%.0f"|format(uptime/3600) }}h {{ "%.0f"|format((uptime%3600)/60) }}m</span>
     </header>
 
+    <div class="grid-2col">
+
     <!-- Weather Dashboard -->
     <section class="card weather-card">
         <h2>Current Weather</h2>
@@ -94,6 +96,8 @@
             {% endfor %}
         </div>
     </section>
+
+    </div><!-- end grid-2col -->
 
     <!-- Click Actions -->
     <section class="card">

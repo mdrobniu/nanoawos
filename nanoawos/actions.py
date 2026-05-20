@@ -279,7 +279,7 @@ def _publish_mqtt(topic, payload, cfg):
 
 
 TTS_CACHE_FILE = "/tmp/nanoawos_tts_cache.json"
-DISK_LOW_THRESHOLD_MB = 500  # Warn/clean if free space below this
+DISK_LOW_THRESHOLD_MB = 10  # Warn/clean if free space on tmpfs below this
 
 
 def _load_tts_cache():
@@ -309,13 +309,6 @@ TIME_VARYING_MARKERS = ("time.zulu", "time.utc", "time.utc_hhmm",
 def _is_time_varying(template):
     """Check if a Jinja2 template references time fields."""
     return any(marker in template for marker in TIME_VARYING_MARKERS)
-
-
-def _tts_wav_path_timed(tag, minute_str, cfg):
-    """WAV path for a specific minute variant: action_8_clicks_1045.wav"""
-    output_dir = cfg["tts"]["output_dir"]
-    safe_tag = re.sub(r'[^a-zA-Z0-9]', '_', tag)
-    return f"{output_dir}/action_{safe_tag}_{minute_str}.wav"
 
 
 def _synthesize_with_engine(text, wav_path, engine, cfg):
@@ -367,106 +360,43 @@ def pregenerate_tts_actions(cfg=None):
         if not template:
             continue
 
-        if _is_time_varying(template):
-            # Generate a WAV for each minute in the next 5 minutes
-            from datetime import timedelta
-            now = datetime.now(timezone.utc)
-            for offset in range(6):  # current minute + next 5
-                future = now + timedelta(minutes=offset)
-                minute_str = future.strftime("%H%M")
-                wav_path = _tts_wav_path_timed(tag, minute_str, cfg)
+        # Render with current data and generate one WAV per template.
+        # For time-varying templates, this means the time is at most 5 min
+        # stale (same as weather data). Simple, no tmpfs bloat.
+        rendered = render_template(template, cfg, extra_ctx)
+        wav_path = _tts_wav_path(tag, cfg)
 
-                # Build time context for this specific minute
-                time_ctx = {
-                    "utc": future.strftime("%H:%M"),
-                    "utc_hour": future.strftime("%H"),
-                    "utc_min": future.strftime("%M"),
-                    "utc_hhmm": minute_str,
-                    "date": future.strftime("%Y-%m-%d"),
-                    "zulu": minute_str + "Z",
-                }
-                rendered = render_template(template, cfg, {**(extra_ctx or {}), "time": time_ctx})
+        if cache.get(wav_path) == rendered and os.path.exists(wav_path):
+            log.debug("TTS cache hit for %s", tag)
+            continue
 
-                if cache.get(wav_path) == rendered and os.path.exists(wav_path):
-                    continue
+        log.info("Pre-generating TTS [%s]: %s", tag, rendered[:60])
+        try:
+            _synthesize_with_engine(rendered, wav_path, engine, cfg)
+            cache[wav_path] = rendered
+            changed = True
+        except Exception as e:
+            log.error("Pre-generation failed for %s: %s", tag, e)
 
-                log.info("Pre-generating TTS [%s] for %sZ: %s", tag, minute_str, rendered[:60])
-                try:
-                    _synthesize_with_engine(rendered, wav_path, engine, cfg)
-                    cache[wav_path] = rendered
-                    changed = True
-                except Exception as e:
-                    log.error("Pre-generation failed for %s@%s: %s", tag, minute_str, e)
-        else:
-            # Static template -- generate once
-            rendered = render_template(template, cfg, extra_ctx)
-            wav_path = _tts_wav_path(tag, cfg)
-
-            if cache.get(wav_path) == rendered and os.path.exists(wav_path):
-                continue
-
-            log.info("Pre-generating TTS [%s]: %s", tag, rendered[:60])
-            try:
-                _synthesize_with_engine(rendered, wav_path, engine, cfg)
-                cache[wav_path] = rendered
-                changed = True
-            except Exception as e:
-                log.error("Pre-generation failed for %s: %s", tag, e)
+    # Clean stale cache entries (old paths, deleted files)
+    cache = {k: v for k, v in cache.items() if os.path.exists(k)}
 
     if changed:
         _save_tts_cache(cache)
         log.info("TTS cache updated (%d entries)", len(cache))
 
-    # Clean up old minute-variant WAVs that are no longer needed
-    _cleanup_old_wavs(cfg)
-
-
-def _cleanup_old_wavs(cfg=None):
-    """Remove old pre-generated WAV files that are no longer current.
-
-    Keeps:
-      - Static action WAVs (action_X_clicks.wav) -- always needed
-      - Minute-variant WAVs for the next 10 minutes -- needed for playback
-      - full.wav, wind.wav -- current weather playlists
-    Removes:
-      - Minute-variant WAVs older than 10 minutes
-      - Stale cache entries for deleted files
-    """
-    if cfg is None:
-        cfg = load_config()
-    output_dir = cfg.get("tts", {}).get("output_dir", "/mnt/p4")
-    now = datetime.now(timezone.utc)
-
-    # Build set of minute strings to keep (current + next 10 minutes)
-    from datetime import timedelta
-    keep_minutes = set()
-    for offset in range(-1, 11):
-        t = now + timedelta(minutes=offset)
-        keep_minutes.add(t.strftime("%H%M"))
-
-    removed = 0
-    cache = _load_tts_cache()
-    cache_changed = False
-
+    # Clean up orphaned timed variant WAVs from the old strategy
+    output_dir = cfg.get("tts", {}).get("output_dir", "/run/nanoawos")
     import glob as _glob
+    removed = 0
     for wav_path in _glob.glob(os.path.join(output_dir, "action_*_????.wav")):
-        # Extract the minute suffix (last 4 chars before .wav)
-        basename = os.path.basename(wav_path)
-        minute_str = basename[-8:-4]  # e.g. "1057" from "action_8_clicks_1057.wav"
-        if minute_str.isdigit() and minute_str not in keep_minutes:
-            try:
-                os.unlink(wav_path)
-                removed += 1
-                if wav_path in cache:
-                    del cache[wav_path]
-                    cache_changed = True
-            except OSError:
-                pass
-
+        try:
+            os.unlink(wav_path)
+            removed += 1
+        except OSError:
+            pass
     if removed:
-        log.info("Cleaned up %d old WAV files", removed)
-    if cache_changed:
-        _save_tts_cache(cache)
+        log.info("Cleaned up %d orphaned timed WAV files", removed)
 
 
 def check_disk_space(cfg=None):
@@ -538,35 +468,14 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
         tts_engine = action.get("tts_engine", "") or cfg["tts"].get("engine", "piper")
         is_slow_engine = tts_engine in ("piper", "wav_concat")
 
-        # For slow engines: look up pre-generated WAV
+        # For slow engines: play pre-generated WAV if it exists
         if is_slow_engine:
-            wav_path = None
-
-            if _is_time_varying(template):
-                # Try exact minute first
-                minute_str = datetime.now(timezone.utc).strftime("%H%M")
-                exact = _tts_wav_path_timed(tag, minute_str, cfg)
-                if os.path.exists(exact):
-                    wav_path = exact
-                else:
-                    # Find the newest existing variant for this tag
-                    import glob as _glob
-                    safe_tag = re.sub(r'[^a-zA-Z0-9]', '_', tag)
-                    pattern = os.path.join(cfg["tts"]["output_dir"], f"action_{safe_tag}_????.wav")
-                    variants = sorted(_glob.glob(pattern))
-                    if variants:
-                        wav_path = variants[-1]  # newest
-            else:
-                candidate = _tts_wav_path(tag, cfg)
-                if os.path.exists(candidate):
-                    wav_path = candidate
-
-            if wav_path:
+            wav_path = _tts_wav_path(tag, cfg)
+            if os.path.exists(wav_path):
                 log.info("TTS [%s] playing cached: %s", tag, wav_path)
                 from nanoawos.audio import play_wav
                 play_wav(wav_path, cfg)
                 return
-
             log.info("TTS [%s] no cached WAV, generating live...", tag)
 
         # Cloud engine or no cached WAV -- generate live
