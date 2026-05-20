@@ -20,6 +20,8 @@ audio:
   mpd_port: 6600
   gpio_pin: 201
   alsa_device: "hw:2,0"
+  filter_cutoff_hz: 300  # High-pass cutoff for buzz removal (aviation voice: 300-3400Hz)
+  noise_reduction: 0.3   # Sox noisered amount (0.0-1.0, higher = more aggressive)
   ptt_pre_delay_ms: 500    # Activate PTT this many ms before audio starts (prevents clipping)
 
 tap:
