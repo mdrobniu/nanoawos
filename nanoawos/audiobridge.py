@@ -18,9 +18,10 @@ from nanoawos.config import load_config
 
 log = logging.getLogger(__name__)
 
-RATE = 44100
+INPUT_RATE = 44100   # dsnoop captures at 44100
+OUTPUT_RATE = 48000  # loopback outputs at 48000 (Opus encoder requirement)
 CHANNELS = 1
-CHUNK_FRAMES = 2205  # 50ms
+CHUNK_FRAMES = 2205  # 50ms at 44100
 
 
 def main():
@@ -31,22 +32,21 @@ def main():
     cfg = load_config()
     cutoff = cfg.get("audio", {}).get("filter_cutoff_hz", 300)
 
-    hpf = HighPassFilter(cutoff_hz=cutoff, sample_rate=RATE)
+    hpf = HighPassFilter(cutoff_hz=cutoff, sample_rate=OUTPUT_RATE)
     chunk_bytes = CHUNK_FRAMES * 2  # 16-bit mono
 
-    log.info("Audio bridge starting: dsnoop -> HPF@%dHz -> loopback", cutoff)
+    log.info("Audio bridge starting: dsnoop@%d -> HPF@%dHz -> loopback@%d",
+             INPUT_RATE, cutoff, OUTPUT_RATE)
 
-    # Use arecord/aplay piped together with Python filter in between.
-    # This avoids PyAudio device enumeration issues with loopback.
     rec = subprocess.Popen(
         ["arecord", "-D", "default", "-f", "S16_LE",
-         "-r", str(RATE), "-c", str(CHANNELS), "-t", "raw",
+         "-r", str(OUTPUT_RATE), "-c", str(CHANNELS), "-t", "raw",
          "--buffer-size", str(CHUNK_FRAMES * 4)],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
     )
     play = subprocess.Popen(
         ["aplay", "-D", "hw:1,0", "-f", "S16_LE",
-         "-r", str(RATE), "-c", str(CHANNELS), "-t", "raw",
+         "-r", str(OUTPUT_RATE), "-c", str(CHANNELS), "-t", "raw",
          "--buffer-size", str(CHUNK_FRAMES * 4)],
         stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
     )
