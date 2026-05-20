@@ -93,39 +93,58 @@ def update_playlists(full_wav, wind_wav, cfg=None):
     log.info("Playlists updated: full=%s, wind=%s", full_wav, wind_wav)
 
 
-def _ptt_pre_delay(cfg):
-    """Activate PTT before audio starts to prevent clipping the beginning.
+SILENCE_WAV = "/tmp/nanoawos_silence.wav"
 
-    The radio needs time to key up (~500ms) before audio reaches it.
-    The GPIO watcher will keep PTT high during playback and release after.
+
+def _ensure_silence_wav(cfg):
+    """Generate a short silence WAV file for PTT key-up lead-in.
+
+    MPD plays this silence first, which activates the PTT relay via
+    the GPIO watcher. By the time the real audio starts, the radio
+    has already keyed up and no audio is clipped.
     """
-    delay = cfg.get("audio", {}).get("ptt_pre_delay_ms", 500) / 1000.0
-    if delay > 0:
-        set_ptt(True, cfg)
-        time.sleep(delay)
+    if os.path.exists(SILENCE_WAV):
+        return SILENCE_WAV
+
+    import wave
+    import struct
+
+    duration_ms = cfg.get("audio", {}).get("ptt_pre_delay_ms", 500)
+    sample_rate = 22050
+    n_samples = int(sample_rate * duration_ms / 1000)
+
+    with wave.open(SILENCE_WAV, "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(struct.pack(f"<{n_samples}h", *([0] * n_samples)))
+
+    log.info("Created silence WAV: %dms at %dHz", duration_ms, sample_rate)
+    return SILENCE_WAV
 
 
 def play_playlist(name, cfg=None):
-    """Play a named playlist (full or wind)."""
+    """Play a named playlist with silence lead-in for PTT key-up."""
     if cfg is None:
         cfg = load_config()
-    _ptt_pre_delay(cfg)
+    silence = _ensure_silence_wav(cfg)
     _mpc(["clear"], cfg)
+    _mpc(["add", silence], cfg)
     _mpc(["load", name], cfg)
-    _mpc(["crossfade", "1"], cfg)
     _mpc(["play"], cfg)
-    log.info("Playing playlist: %s", name)
+    log.info("Playing playlist: %s (with silence lead-in)", name)
 
 
 def play_wav(wav_path, cfg=None):
-    """Play a single WAV file directly."""
+    """Play a WAV file with silence lead-in for PTT key-up."""
     if cfg is None:
         cfg = load_config()
-    _ptt_pre_delay(cfg)
+    silence = _ensure_silence_wav(cfg)
     _mpc(["clear"], cfg)
+    _mpc(["add", silence], cfg)
     _mpc(["add", wav_path], cfg)
     _mpc(["play"], cfg)
-    log.info("Playing WAV: %s", wav_path)
+    log.info("Playing WAV: %s (with silence lead-in)", wav_path)
 
 
 def _get_mpd_state(cfg):

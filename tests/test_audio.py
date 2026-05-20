@@ -67,37 +67,34 @@ def test_update_playlists_calls_mpc_in_order(cfg):
 
 # -- play_playlist ----------------------------------------------------------
 
-def test_play_playlist_calls_mpc_clear_load_crossfade_play(cfg):
-    """play_playlist must issue clear, load, crossfade 1, play in order."""
+def test_play_playlist_adds_silence_then_content(cfg):
+    """play_playlist must add silence WAV before loading the playlist."""
     with patch("nanoawos.audio._mpc") as mock_mpc, \
-         patch("nanoawos.audio.set_ptt"), \
-         patch("nanoawos.audio.time"):
+         patch("nanoawos.audio._ensure_silence_wav", return_value="/tmp/silence.wav"):
         audio.play_playlist("full", cfg)
 
-        expected = [
-            call(["clear"], cfg),
-            call(["load", "full"], cfg),
-            call(["crossfade", "1"], cfg),
-            call(["play"], cfg),
-        ]
-        assert mock_mpc.call_args_list == expected
+        args_list = [c[0][0][0] for c in mock_mpc.call_args_list]
+        assert args_list == ["clear", "add", "load", "play"]
+        # Silence WAV is added first
+        assert mock_mpc.call_args_list[1] == call(["add", "/tmp/silence.wav"], cfg)
+        # Then playlist loaded
+        assert mock_mpc.call_args_list[2] == call(["load", "full"], cfg)
 
 
 # -- play_wav ---------------------------------------------------------------
 
-def test_play_wav_calls_mpc_clear_add_play(cfg):
-    """play_wav must issue clear, add <path>, play in order."""
+def test_play_wav_adds_silence_then_content(cfg):
+    """play_wav must add silence WAV before the actual audio file."""
     with patch("nanoawos.audio._mpc") as mock_mpc, \
-         patch("nanoawos.audio.set_ptt"), \
-         patch("nanoawos.audio.time"):
+         patch("nanoawos.audio._ensure_silence_wav", return_value="/tmp/silence.wav"):
         audio.play_wav("/mnt/p4/audio/alert.wav", cfg)
 
-        expected = [
-            call(["clear"], cfg),
-            call(["add", "/mnt/p4/audio/alert.wav"], cfg),
-            call(["play"], cfg),
-        ]
-        assert mock_mpc.call_args_list == expected
+        args_list = [c[0][0][0] for c in mock_mpc.call_args_list]
+        assert args_list == ["clear", "add", "add", "play"]
+        # Silence first
+        assert mock_mpc.call_args_list[1] == call(["add", "/tmp/silence.wav"], cfg)
+        # Then actual file
+        assert mock_mpc.call_args_list[2] == call(["add", "/mnt/p4/audio/alert.wav"], cfg)
 
 
 # -- get_ptt ----------------------------------------------------------------
