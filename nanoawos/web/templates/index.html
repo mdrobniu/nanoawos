@@ -208,7 +208,19 @@
                     <label>PTT Pre-delay (ms)</label>
                     <input name="audio.ptt_pre_delay_ms" type="number" value="{{ cfg.audio.get('ptt_pre_delay_ms', 500) }}">
                 </div>
-                <p class="hint">Delay between PTT activation and audio playback. Prevents radio from clipping the start.</p>
+                <div class="form-row">
+                    <label>Filter Cutoff (Hz)</label>
+                    <input name="audio.filter_cutoff_hz" type="number" value="{{ cfg.audio.get('filter_cutoff_hz', 300) }}">
+                </div>
+                <div class="form-row">
+                    <label>Noise Reduction</label>
+                    <input name="audio.noise_reduction" type="number" step="0.05" min="0" max="1" value="{{ cfg.audio.get('noise_reduction', 0.3) }}">
+                </div>
+                <p class="hint">Filter: high-pass cutoff for buzz removal. Noise reduction: 0=off, 0.1=gentle, 0.3=moderate, 0.5=aggressive. Recalibrate noise profile via System Log.</p>
+                <div class="actions" style="margin-top:0.5rem">
+                    <button type="button" onclick="recaptureNoise()" class="btn btn-outline btn-sm">Recapture Noise Profile</button>
+                    <span class="hint" id="noise-hint"></span>
+                </div>
             </fieldset>
 
             <fieldset>
@@ -485,6 +497,20 @@ function deleteAudio(name) {
         .then(() => loadAudioFiles().then(renderAudioFiles));
 }
 
+// Noise profile capture
+function recaptureNoise() {
+    const hint = document.getElementById('noise-hint');
+    hint.textContent = 'Press and HOLD PTT for 5 seconds (no talking)...';
+    hint.style.color = '#f59e0b';
+    fetch('/api/audio/recapture-noise', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            hint.textContent = d.status === 'ok' ? 'Profile captured! (RMS: ' + d.rms + ')' : 'Failed: ' + (d.error || 'unknown');
+            hint.style.color = d.status === 'ok' ? '#22c55e' : '#ef4444';
+            setTimeout(() => { hint.textContent = ''; }, 10000);
+        });
+}
+
 function playWeather(type) {
     fetch('/api/play/' + type, {method: 'POST'})
         .then(r => r.json())
@@ -529,9 +555,15 @@ function saveConfig(e) {
         body: JSON.stringify(data)
     }).then(r => r.json()).then(d => {
         const status = document.getElementById('save-status');
-        status.textContent = 'Configuration saved. Restart services to apply.';
+        status.textContent = 'Configuration saved. Restarting services...';
         status.className = 'success';
-        setTimeout(() => { status.textContent = ''; }, 5000);
+        // Restart audio bridge to apply filter/noise changes
+        fetch('/api/service/nanoawos-audiobridge/restart', {method:'POST'}).then(() =>
+            fetch('/api/service/darkice/restart', {method:'POST'})
+        ).then(() => {
+            status.textContent = 'Configuration saved and applied.';
+            setTimeout(() => { status.textContent = ''; }, 5000);
+        });
     });
 }
 

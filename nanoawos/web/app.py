@@ -124,6 +124,48 @@ def api_tap_profile_clear():
     return jsonify({"status": "cleared"})
 
 
+@app.route("/api/audio/recapture-noise", methods=["POST"])
+def api_recapture_noise():
+    """Record 5 seconds and create noise profile for sox noisered."""
+    import math
+    try:
+        # Record 5 seconds from default device
+        r = subprocess.run(
+            ["arecord", "-D", "default", "-f", "S16_LE", "-r", "44100",
+             "-c", "1", "-d", "5", "/tmp/buzz_sample.wav"],
+            capture_output=True, timeout=10)
+        if r.returncode != 0:
+            return jsonify({"status": "error", "error": "arecord failed"})
+
+        # Measure RMS to confirm signal was captured
+        import struct
+        import wave
+        w = wave.open("/tmp/buzz_sample.wav", "r")
+        data = w.readframes(w.getnframes())
+        w.close()
+        count = len(data) // 2
+        shorts = struct.unpack(f"<{count}h", data)
+        rms = int(math.sqrt(sum(s * s for s in shorts) / count))
+
+        # Create noise profile
+        r2 = subprocess.run(
+            ["sox", "/tmp/buzz_sample.wav", "-n", "noiseprof", "/tmp/noise.prof"],
+            capture_output=True, timeout=10)
+        if r2.returncode != 0:
+            return jsonify({"status": "error", "error": "sox noiseprof failed"})
+
+        # Restart bridge to use new profile
+        subprocess.run(["sudo", "systemctl", "restart", "nanoawos-audiobridge"],
+                       capture_output=True, timeout=10)
+        subprocess.run(["sudo", "systemctl", "restart", "darkice"],
+                       capture_output=True, timeout=10)
+
+        return jsonify({"status": "ok", "rms": rms,
+                        "message": "captured" if rms > 100 else "very quiet - PTT may not have been pressed"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)})
+
+
 @app.route("/api/audio/upload", methods=["POST"])
 def api_audio_upload():
     """Upload an audio file (wav/mp3/ogg) for use in click/transcription actions."""
@@ -288,7 +330,7 @@ def api_config_put():
 def api_service_action(name, action):
     allowed_services = [
         "nanoawos-weather.timer", "nanoawos-tap", "nanoawos-gpio",
-        "nanoawos-web", "darkice", "icecast2", "mpd",
+        "nanoawos-web", "nanoawos-audiobridge", "darkice", "icecast2", "mpd",
     ]
     if name not in allowed_services:
         return jsonify({"error": "Service not allowed"}), 403
