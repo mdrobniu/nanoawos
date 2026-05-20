@@ -69,7 +69,9 @@ def test_update_playlists_calls_mpc_in_order(cfg):
 
 def test_play_playlist_calls_mpc_clear_load_crossfade_play(cfg):
     """play_playlist must issue clear, load, crossfade 1, play in order."""
-    with patch("nanoawos.audio._mpc") as mock_mpc:
+    with patch("nanoawos.audio._mpc") as mock_mpc, \
+         patch("nanoawos.audio.set_ptt"), \
+         patch("nanoawos.audio.time"):
         audio.play_playlist("full", cfg)
 
         expected = [
@@ -85,7 +87,9 @@ def test_play_playlist_calls_mpc_clear_load_crossfade_play(cfg):
 
 def test_play_wav_calls_mpc_clear_add_play(cfg):
     """play_wav must issue clear, add <path>, play in order."""
-    with patch("nanoawos.audio._mpc") as mock_mpc:
+    with patch("nanoawos.audio._mpc") as mock_mpc, \
+         patch("nanoawos.audio.set_ptt"), \
+         patch("nanoawos.audio.time"):
         audio.play_wav("/mnt/p4/audio/alert.wav", cfg)
 
         expected = [

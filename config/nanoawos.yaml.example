@@ -20,6 +20,7 @@ audio:
   mpd_port: 6600
   gpio_pin: 201
   alsa_device: "hw:2,0"
+  ptt_pre_delay_ms: 500    # Activate PTT this many ms before audio starts (prevents clipping)
 
 tap:
   short_clicks: 4

@@ -93,10 +93,23 @@ def update_playlists(full_wav, wind_wav, cfg=None):
     log.info("Playlists updated: full=%s, wind=%s", full_wav, wind_wav)
 
 
+def _ptt_pre_delay(cfg):
+    """Activate PTT before audio starts to prevent clipping the beginning.
+
+    The radio needs time to key up (~500ms) before audio reaches it.
+    The GPIO watcher will keep PTT high during playback and release after.
+    """
+    delay = cfg.get("audio", {}).get("ptt_pre_delay_ms", 500) / 1000.0
+    if delay > 0:
+        set_ptt(True, cfg)
+        time.sleep(delay)
+
+
 def play_playlist(name, cfg=None):
     """Play a named playlist (full or wind)."""
     if cfg is None:
         cfg = load_config()
+    _ptt_pre_delay(cfg)
     _mpc(["clear"], cfg)
     _mpc(["load", name], cfg)
     _mpc(["crossfade", "1"], cfg)
@@ -108,6 +121,7 @@ def play_wav(wav_path, cfg=None):
     """Play a single WAV file directly."""
     if cfg is None:
         cfg = load_config()
+    _ptt_pre_delay(cfg)
     _mpc(["clear"], cfg)
     _mpc(["add", wav_path], cfg)
     _mpc(["play"], cfg)

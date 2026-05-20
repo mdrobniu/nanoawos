@@ -167,13 +167,12 @@
             </fieldset>
 
             <fieldset>
-                <legend>Text-to-Speech</legend>
+                <legend>Text-to-Speech (defaults, can be overridden per click action)</legend>
                 <div class="form-row">
-                    <label>Engine</label>
+                    <label>Default Engine</label>
                     <select name="tts.engine">
-                        <option value="piper" {{ 'selected' if cfg.tts.engine == 'piper' }}>Piper (local)</option>
-                        <option value="cloud" {{ 'selected' if cfg.tts.engine == 'cloud' }}>Cloud AI (OpenAI)</option>
-                        <option value="wav_concat" {{ 'selected' if cfg.tts.engine == 'wav_concat' }}>WAV Concat (legacy)</option>
+                        <option value="piper" {{ 'selected' if cfg.tts.engine == 'piper' }}>Piper (local, slow but offline)</option>
+                        <option value="cloud" {{ 'selected' if cfg.tts.engine == 'cloud' }}>OpenAI (fast, needs internet)</option>
                     </select>
                 </div>
                 <div class="form-row">
@@ -185,29 +184,31 @@
                     </select>
                 </div>
                 <div class="form-row">
-                    <label>Cloud API Key</label>
+                    <label>OpenAI API Key</label>
                     <input name="tts.cloud_api_key" value="{{ cfg.tts.get('cloud_api_key', '') }}" placeholder="sk-...">
                 </div>
                 <div class="form-row">
-                    <label>Cloud Voice</label>
+                    <label>OpenAI Voice</label>
                     <select name="tts.cloud_voice">
                         {% for v in ['nova', 'alloy', 'echo', 'fable', 'onyx', 'shimmer'] %}
                         <option value="{{ v }}" {{ 'selected' if cfg.tts.get('cloud_voice') == v }}>{{ v }}</option>
                         {% endfor %}
                     </select>
                 </div>
+                <p class="hint">Both engines can be configured. Each click action can choose its own engine.</p>
             </fieldset>
 
             <fieldset>
-                <legend>Click Detection</legend>
+                <legend>Audio</legend>
                 <div class="form-row">
-                    <label>Short Clicks (wind)</label>
-                    <input name="tap.short_clicks" type="number" value="{{ cfg.tap.short_clicks }}">
+                    <label>PTT Pre-delay (ms)</label>
+                    <input name="audio.ptt_pre_delay_ms" type="number" value="{{ cfg.audio.get('ptt_pre_delay_ms', 500) }}">
                 </div>
-                <div class="form-row">
-                    <label>Long Clicks (full)</label>
-                    <input name="tap.long_clicks" type="number" value="{{ cfg.tap.long_clicks }}">
-                </div>
+                <p class="hint">Delay between PTT activation and audio playback. Prevents radio from clipping the start.</p>
+            </fieldset>
+
+            <fieldset>
+                <legend>Click Detection Tuning</legend>
                 <div class="form-row">
                     <label>Min Click (ms)</label>
                     <input name="tap.min_click_ms" type="number" value="{{ cfg.tap.get('min_click_ms', 30) }}">
