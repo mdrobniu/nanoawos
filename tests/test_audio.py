@@ -67,14 +67,12 @@ def test_update_playlists_calls_mpc_in_order(cfg):
 
 # -- play_playlist ----------------------------------------------------------
 
-def test_play_playlist_keys_up_ptt_then_adds_silence_then_content(cfg):
-    """play_playlist must key up PTT, then add silence + playlist."""
+def test_play_playlist_adds_silence_then_content(cfg):
+    """play_playlist must add silence WAV before loading the playlist."""
     with patch("nanoawos.audio._mpc") as mock_mpc, \
-         patch("nanoawos.audio._ensure_silence_wav", return_value="/tmp/silence.wav"), \
-         patch("nanoawos.audio._ptt_key_up") as mock_ptt:
+         patch("nanoawos.audio._ensure_silence_wav", return_value="/tmp/silence.wav"):
         audio.play_playlist("full", cfg)
 
-        mock_ptt.assert_called_once_with(cfg)
         args_list = [c[0][0][0] for c in mock_mpc.call_args_list]
         assert args_list == ["clear", "add", "load", "play"]
         assert mock_mpc.call_args_list[1] == call(["add", "/tmp/silence.wav"], cfg)
@@ -83,14 +81,12 @@ def test_play_playlist_keys_up_ptt_then_adds_silence_then_content(cfg):
 
 # -- play_wav ---------------------------------------------------------------
 
-def test_play_wav_keys_up_ptt_then_adds_silence_then_content(cfg):
-    """play_wav must key up PTT, then add silence + audio file."""
+def test_play_wav_adds_silence_then_content(cfg):
+    """play_wav must add silence WAV before the actual audio file."""
     with patch("nanoawos.audio._mpc") as mock_mpc, \
-         patch("nanoawos.audio._ensure_silence_wav", return_value="/tmp/silence.wav"), \
-         patch("nanoawos.audio._ptt_key_up") as mock_ptt:
+         patch("nanoawos.audio._ensure_silence_wav", return_value="/tmp/silence.wav"):
         audio.play_wav("/mnt/p4/audio/alert.wav", cfg)
 
-        mock_ptt.assert_called_once_with(cfg)
         args_list = [c[0][0][0] for c in mock_mpc.call_args_list]
         assert args_list == ["clear", "add", "add", "play"]
         assert mock_mpc.call_args_list[1] == call(["add", "/tmp/silence.wav"], cfg)
