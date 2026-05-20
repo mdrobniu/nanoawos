@@ -318,11 +318,19 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
 
 
 def execute_action(click_count, cfg=None):
-    """Execute the action configured for the given click count."""
-    if cfg is None:
-        cfg = load_config()
+    """Execute the action configured for the given click count.
+
+    Always reloads config to pick up changes from web UI without restart.
+    """
+    # Force reload config to pick up web UI changes
+    from nanoawos.config import load_config as _reload
+    import nanoawos.config as _cfg_mod
+    _cfg_mod._config = None
+    cfg = _reload()
+
     actions = cfg.get("click_actions", {})
-    action = actions.get(str(click_count)) or actions.get(click_count)
+    # Try both int and string keys (YAML stores int, JSON uses string)
+    action = actions.get(click_count) or actions.get(str(click_count))
     if not action:
         log.info("No action configured for %d clicks", click_count)
         return
