@@ -94,32 +94,37 @@ class ClickProfile:
     def has_enough_data(self):
         return len(self.click_energies) >= self.min_samples_for_auto
 
-    def get_thresholds(self, noise_floor):
+    def get_thresholds(self, noise_floor, default_high_mult, default_low_mult):
         """Compute optimal thresholds from learned click profile.
 
-        Strategy: t_high = geometric mean of noise floor and weakest click.
-        This puts the threshold halfway (on a log scale) between noise
-        and the weakest real signal, maximizing margin on both sides.
-        t_low = 3x noise floor (above decay tail).
+        Strategy:
+          t_high = 10% of the weakest observed click energy
+          t_low  = t_high / 5
+        This guarantees thresholds are always well below any real click
+        but well above the noise floor + decay tail.
+
+        Safety: never go below the default multiplier thresholds.
         """
         if not self.has_enough_data() or noise_floor <= 0:
             return None, None
 
-        min_click = min(self.click_energies)
-        mean_click = sum(self.click_energies) / len(self.click_energies)
+        # Use the weakest observed click as our reference
+        weakest = min(self.click_energies)
 
-        # Use 5th percentile as the "weakest expected click"
-        sorted_e = sorted(self.click_energies)
-        p5_idx = max(0, len(sorted_e) // 20)
-        weakest = sorted_e[p5_idx]
+        # t_high at 10% of weakest click -- gives 10x safety margin
+        t_high = weakest * 0.10
+        # t_low at 2% of weakest click
+        t_low = weakest * 0.02
 
-        # Geometric mean between noise and weakest click
-        t_high = math.sqrt(noise_floor * weakest)
-        # Low threshold: 3x noise or 10% of weakest click
-        t_low = max(noise_floor * 3, weakest * 0.1)
+        # Safety floor: never go below default multiplier thresholds
+        default_high = noise_floor * default_high_mult
+        default_low = noise_floor * default_low_mult
+        t_high = max(t_high, default_high)
+        t_low = max(t_low, default_low)
+
         # Ensure t_low < t_high
         if t_low >= t_high:
-            t_low = t_high * 0.5
+            t_low = t_high * 0.3
 
         return t_high, t_low
 
@@ -356,7 +361,8 @@ class ClickDetector:
         """Get thresholds - learned if available, else default multipliers."""
         nf = self.noise_floor.estimate
         if self.profile.has_enough_data():
-            t_high, t_low = self.profile.get_thresholds(nf)
+            t_high, t_low = self.profile.get_thresholds(
+                nf, self.default_high_mult, self.default_low_mult)
             if t_high and t_low:
                 return t_high, t_low
         # Fallback to configured multipliers
@@ -395,9 +401,11 @@ class ClickDetector:
         if avg_peak > 0 and count > 0:
             self.profile.record_click(avg_peak, avg_dur)
             if self.profile.has_enough_data():
-                t_h, t_l = self.profile.get_thresholds(self.noise_floor.estimate)
-                log.debug("Auto-tuned: t_high=%d t_low=%d (from %d samples)",
-                          int(t_h), int(t_l), len(self.profile.click_energies))
+                t_h, t_l = self.profile.get_thresholds(
+                    self.noise_floor.estimate, self.default_high_mult, self.default_low_mult)
+                log.info("Auto-tuned: t_high=%d t_low=%d (from %d samples, weakest=%d)",
+                         int(t_h), int(t_l), len(self.profile.click_energies),
+                         min(self.profile.click_energies))
 
         # Write count to /tmp
         try:
