@@ -1,0 +1,17 @@
+[Unit]
+Description=NanoAWOS Audio Filter Bridge (dsnoop -> HPF -> loopback)
+After=multi-user.target
+Before=darkice.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+ExecStart=/usr/bin/python3 -m nanoawos.audiobridge
+WorkingDirectory=/opt/nanoawos
+Environment=PYTHONPATH=/opt/nanoawos
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
