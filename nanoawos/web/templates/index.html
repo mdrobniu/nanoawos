@@ -66,23 +66,6 @@
         </div>
     </section>
 
-    <!-- Radio Transcriptions -->
-    <section class="card">
-        <h2>Radio Transcriptions <span id="tx-status" class="status"></span></h2>
-        <div id="transcriptions" class="tx-log">
-            <p class="hint">{% if cfg.transcribe.enabled %}Listening for radio transmissions...{% else %}Transcription disabled. Set transcribe.enabled and openai_api_key in config.{% endif %}</p>
-        </div>
-    </section>
-
-    <!-- Audio Stream -->
-    <section class="card">
-        <h2>Live Audio</h2>
-        <audio id="stream" controls preload="none">
-            <source src="http://{{ request.host.split(':')[0] }}:8000/epmy" type="audio/ogg">
-        </audio>
-        <p class="hint">Icecast stream from radio input</p>
-    </section>
-
     <!-- Services -->
     <section class="card">
         <h2>Services</h2>
@@ -97,7 +80,24 @@
         </div>
     </section>
 
+    <!-- Audio Stream -->
+    <section class="card">
+        <h2>Live Audio</h2>
+        <audio id="stream" controls preload="none">
+            <source src="http://{{ request.host.split(':')[0] }}:8000/epmy" type="audio/ogg">
+        </audio>
+        <p class="hint">Icecast stream from radio input</p>
+    </section>
+
     </div><!-- end grid-2col -->
+
+    <!-- Radio Transcriptions -->
+    <section class="card">
+        <h2>Radio Transcriptions <span id="tx-status" class="status"></span></h2>
+        <div id="transcriptions" class="tx-log">
+            <p class="hint">{% if cfg.transcribe.enabled %}Listening for radio transmissions...{% else %}Transcription disabled. Set transcribe.enabled and openai_api_key in config.{% endif %}</p>
+        </div>
+    </section>
 
     <!-- Click Actions -->
     <section class="card">
