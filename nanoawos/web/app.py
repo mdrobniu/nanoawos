@@ -124,6 +124,50 @@ def api_tap_profile_clear():
     return jsonify({"status": "cleared"})
 
 
+@app.route("/api/audio/upload", methods=["POST"])
+def api_audio_upload():
+    """Upload an audio file (wav/mp3/ogg) for use in click/transcription actions."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+    # Sanitize filename
+    import re
+    safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', f.filename)
+    upload_dir = "/mnt/p4/audio"
+    os.makedirs(upload_dir, exist_ok=True)
+    path = os.path.join(upload_dir, safe_name)
+    f.save(path)
+    log.info("Audio uploaded: %s (%d bytes)", path, os.path.getsize(path))
+    return jsonify({"status": "uploaded", "path": path, "name": safe_name})
+
+
+@app.route("/api/audio/list")
+def api_audio_list():
+    """List uploaded audio files."""
+    upload_dir = "/mnt/p4/audio"
+    files = []
+    if os.path.isdir(upload_dir):
+        for f in sorted(os.listdir(upload_dir)):
+            fp = os.path.join(upload_dir, f)
+            if os.path.isfile(fp):
+                files.append({"name": f, "path": fp, "size": os.path.getsize(fp)})
+    return jsonify(files)
+
+
+@app.route("/api/audio/delete/<name>", methods=["DELETE"])
+def api_audio_delete(name):
+    """Delete an uploaded audio file."""
+    import re
+    safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', name)
+    path = os.path.join("/mnt/p4/audio", safe_name)
+    if os.path.exists(path):
+        os.unlink(path)
+        return jsonify({"status": "deleted"})
+    return jsonify({"error": "Not found"}), 404
+
+
 @app.route("/api/transcriptions")
 def api_transcriptions():
     """Return recent transcriptions."""

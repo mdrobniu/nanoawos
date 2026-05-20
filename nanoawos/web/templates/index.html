@@ -118,6 +118,18 @@
         <div id="tx-reactions-status"></div>
     </section>
 
+    <!-- Audio Files -->
+    <section class="card">
+        <h2>Audio Files</h2>
+        <p class="hint" style="margin-bottom:0.5rem">Upload WAV/MP3/OGG files to play as click actions or transcription reactions.</p>
+        <div id="audio-files-list"></div>
+        <div class="actions" style="margin-top:0.5rem">
+            <label class="btn btn-outline btn-sm" style="cursor:pointer">
+                Upload File <input type="file" accept=".wav,.mp3,.ogg" onchange="uploadAudio(this)" style="display:none">
+            </label>
+        </div>
+    </section>
+
     <!-- Configuration -->
     <section class="card">
         <h2>Configuration</h2>
@@ -294,8 +306,20 @@ function toggleActionFields(sel) {
     document.querySelectorAll(`.action-extra[data-n="${n}"]`).forEach(el => {
         const f = el.dataset.field;
         if (f === 'text' || f === 'tts_engine') el.style.display = type === 'tts' ? '' : 'none';
+        if (f === 'file_wrap') el.style.display = type === 'audio_file' ? 'flex' : 'none';
         if (f === 'topic') el.style.display = type === 'mqtt' ? '' : 'none';
     });
+}
+let audioFiles = [];
+function loadAudioFiles() {
+    return fetch('/api/audio/list').then(r=>r.json()).then(f => { audioFiles = f; });
+}
+function audioSelect(n, field, selected) {
+    if (!audioFiles.length) return `<span class="hint">No files uploaded</span>`;
+    return `<select class="action-extra" data-n="${n}" data-field="${field}">
+        <option value="">-- select file --</option>
+        ${audioFiles.map(f => `<option value="${f.path}" ${f.path===selected?'selected':''}>${f.name} (${(f.size/1024).toFixed(0)}KB)</option>`).join('')}
+    </select>`;
 }
 function buildActionEditor(actions) {
     const c = document.getElementById('click-actions-editor');
@@ -303,8 +327,6 @@ function buildActionEditor(actions) {
     for (let n = 4; n <= 12; n++) {
         const a = actions[String(n)] || {};
         const t = a.type || 'none';
-        const showTts = t === 'tts' ? '' : 'display:none';
-        const showMqtt = t === 'mqtt' ? '' : 'display:none';
         html += `<div class="action-row">
             <span class="action-clicks">${n}</span>
             <input class="action-label" data-n="${n}" data-field="label" value="${a.label||''}" placeholder="Label">
@@ -313,16 +335,17 @@ function buildActionEditor(actions) {
                 <option value="weather_wind" ${t==='weather_wind'?'selected':''}>Wind report</option>
                 <option value="weather_full" ${t==='weather_full'?'selected':''}>Full weather</option>
                 <option value="tts" ${t==='tts'?'selected':''}>Custom TTS</option>
+                <option value="audio_file" ${t==='audio_file'?'selected':''}>Audio file</option>
                 <option value="mqtt" ${t==='mqtt'?'selected':''}>MQTT event</option>
             </select>
-            <select class="action-extra" data-n="${n}" data-field="tts_engine" style="${showTts}">
+            <select class="action-extra" data-n="${n}" data-field="tts_engine" style="${t==='tts'?'':'display:none'}">
                 <option value="" ${!a.tts_engine?'selected':''}>Default engine</option>
                 <option value="piper" ${a.tts_engine==='piper'?'selected':''}>Piper</option>
                 <option value="cloud" ${a.tts_engine==='cloud'?'selected':''}>OpenAI</option>
-                <option value="wav_concat" ${a.tts_engine==='wav_concat'?'selected':''}>WAV</option>
             </select>
-            <input class="action-extra" data-n="${n}" data-field="text" value="${(a.text||'').replace(/"/g,'&quot;')}" placeholder="Template: {&lcub; weather.wind }}, {&lcub; time.zulu }}..." style="${showTts}">
-            <input class="action-extra" data-n="${n}" data-field="topic" value="${a.topic||'nanoawos/clicks/'+n}" placeholder="MQTT topic" style="${showMqtt}">
+            <input class="action-extra" data-n="${n}" data-field="text" value="${(a.text||'').replace(/"/g,'&quot;')}" placeholder="Jinja2 template..." style="${t==='tts'?'':'display:none'}">
+            <span class="action-extra" data-n="${n}" data-field="file_wrap" style="${t==='audio_file'?'display:flex;gap:0.3rem;flex:1':'display:none'}">${audioSelect(n,'file',a.file||'')}</span>
+            <input class="action-extra" data-n="${n}" data-field="topic" value="${a.topic||'nanoawos/clicks/'+n}" placeholder="MQTT topic" style="${t==='mqtt'?'':'display:none'}">
         </div>`;
     }
     c.innerHTML = html;
@@ -338,6 +361,10 @@ function saveClickActions() {
             act.text = document.querySelector(`.action-extra[data-n="${n}"][data-field="text"]`).value;
             const eng = document.querySelector(`.action-extra[data-n="${n}"][data-field="tts_engine"]`).value;
             if (eng) act.tts_engine = eng;
+        }
+        if (type === 'audio_file') {
+            const sel = document.querySelector(`[data-n="${n}"][data-field="file_wrap"] select`);
+            if (sel) act.file = sel.value;
         }
         if (type === 'mqtt') act.topic = document.querySelector(`.action-extra[data-n="${n}"][data-field="topic"]`).value;
         actions[String(n)] = act;
@@ -374,10 +401,15 @@ function renderTxReactions() {
             <select onchange="txReactions[${i}].type=this.value;renderTxReactions()" class="action-type">
                 <option value="mqtt" ${t==='mqtt'?'selected':''}>MQTT</option>
                 <option value="tts" ${t==='tts'?'selected':''}>TTS</option>
+                <option value="audio_file" ${t==='audio_file'?'selected':''}>Audio file</option>
                 <option value="weather_full" ${t==='weather_full'?'selected':''}>Full weather</option>
                 <option value="weather_wind" ${t==='weather_wind'?'selected':''}>Wind report</option>
                 <option value="none" ${t==='none'?'selected':''}>None</option>
             </select>
+            ${t==='audio_file'?`<select onchange="txReactions[${i}].file=this.value" class="action-extra">
+                <option value="">-- select --</option>
+                ${audioFiles.map(f=>`<option value="${f.path}" ${f.path===r.file?'selected':''}>${f.name}</option>`).join('')}
+            </select>`:''}
             ${t==='tts'?`<select onchange="txReactions[${i}].tts_engine=this.value" class="action-type" style="width:80px">
                 <option value="" ${!r.tts_engine?'selected':''}>Default</option>
                 <option value="piper" ${r.tts_engine==='piper'?'selected':''}>Piper</option>
@@ -406,11 +438,41 @@ function saveTxReactions() {
         setTimeout(() => s.textContent = '', 5000);
     });
 }
-// Load on page load
-fetch('/api/config').then(r=>r.json()).then(cfg => {
-    buildActionEditor(cfg.click_actions||{});
-    buildTxReactionsEditor(cfg.transcription_reactions||[]);
+// Load on page load -- fetch audio files first, then config
+loadAudioFiles().then(() => {
+    renderAudioFiles();
+    fetch('/api/config').then(r=>r.json()).then(cfg => {
+        buildActionEditor(cfg.click_actions||{});
+        buildTxReactionsEditor(cfg.transcription_reactions||[]);
+    });
 });
+
+// Audio file manager
+function renderAudioFiles() {
+    const c = document.getElementById('audio-files-list');
+    if (!audioFiles.length) { c.innerHTML = '<p class="hint">No audio files uploaded yet.</p>'; return; }
+    c.innerHTML = audioFiles.map(f =>
+        `<div class="action-row" style="padding:0.2rem 0">
+            <span style="color:#e2e8f0;font-size:0.85rem">${f.name}</span>
+            <span class="hint">${(f.size/1024).toFixed(0)} KB</span>
+            <button onclick="deleteAudio('${f.name}')" class="btn btn-sm" style="background:#7f1d1d;color:#f87171;margin-left:auto">Delete</button>
+        </div>`
+    ).join('');
+}
+function uploadAudio(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    fetch('/api/audio/upload', {method:'POST', body: fd})
+        .then(r=>r.json()).then(() => loadAudioFiles().then(renderAudioFiles));
+    input.value = '';
+}
+function deleteAudio(name) {
+    if (!confirm('Delete ' + name + '?')) return;
+    fetch('/api/audio/delete/' + name, {method:'DELETE'})
+        .then(() => loadAudioFiles().then(renderAudioFiles));
+}
 
 function playWeather(type) {
     fetch('/api/play/' + type, {method: 'POST'})

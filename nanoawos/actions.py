@@ -190,6 +190,14 @@ def _run_action(action, cfg, tag="action", extra_ctx=None):
         from nanoawos.audio import play_wav
         play_wav(wav_path, cfg)
 
+    elif action_type == "audio_file":
+        audio_path = action.get("file", "")
+        if not audio_path or not os.path.exists(audio_path):
+            log.warning("Audio file not found: %s", audio_path)
+            return
+        from nanoawos.audio import play_wav
+        play_wav(audio_path, cfg)
+
     elif action_type == "mqtt":
         topic = action.get("topic", f"nanoawos/{tag}")
         payload = action.get("payload", "")
