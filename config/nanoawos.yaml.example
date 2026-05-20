@@ -13,7 +13,7 @@ weather:
 tts:
   engine: "piper"
   piper_model: "/mnt/p4/models/en_US-ryan-medium.onnx"
-  output_dir: "/mnt/p4"
+  output_dir: "/run/nanoawos"    # tmpfs ramdisk -- no SD card wear, lost on reboot (regenerated)
 
 audio:
   mpd_host: "localhost"

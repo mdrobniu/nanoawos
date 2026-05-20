@@ -74,8 +74,19 @@ else
     echo "  WARN: NanoHatOLED directory not found, skipping OLED update"
 fi
 
+# --- Setup tmpfs for TTS output (saves SD card writes) ---
+echo "[7/8] Setting up tmpfs ramdisk for TTS..."
+mkdir -p /run/nanoawos
+chmod 777 /run/nanoawos
+# Make it persistent across reboots via tmpfiles.d
+cat > /etc/tmpfiles.d/nanoawos.conf << 'TMPEOF'
+d /run/nanoawos 0777 root root -
+d /mnt/p4/audio 0777 root root -
+TMPEOF
+echo "  /run/nanoawos ramdisk ready"
+
 # --- Enable and start new services ---
-echo "[7/7] Enabling and starting services..."
+echo "[8/8] Enabling and starting services..."
 systemctl daemon-reload
 
 systemctl enable nanoawos-weather.timer

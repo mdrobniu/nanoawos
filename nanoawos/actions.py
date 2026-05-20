@@ -279,6 +279,7 @@ def _publish_mqtt(topic, payload, cfg):
 
 
 TTS_CACHE_FILE = "/tmp/nanoawos_tts_cache.json"
+DISK_LOW_THRESHOLD_MB = 500  # Warn/clean if free space below this
 
 
 def _load_tts_cache():
@@ -415,6 +416,97 @@ def pregenerate_tts_actions(cfg=None):
     if changed:
         _save_tts_cache(cache)
         log.info("TTS cache updated (%d entries)", len(cache))
+
+    # Clean up old minute-variant WAVs that are no longer needed
+    _cleanup_old_wavs(cfg)
+
+
+def _cleanup_old_wavs(cfg=None):
+    """Remove old pre-generated WAV files that are no longer current.
+
+    Keeps:
+      - Static action WAVs (action_X_clicks.wav) -- always needed
+      - Minute-variant WAVs for the next 10 minutes -- needed for playback
+      - full.wav, wind.wav -- current weather playlists
+    Removes:
+      - Minute-variant WAVs older than 10 minutes
+      - Stale cache entries for deleted files
+    """
+    if cfg is None:
+        cfg = load_config()
+    output_dir = cfg.get("tts", {}).get("output_dir", "/mnt/p4")
+    now = datetime.now(timezone.utc)
+
+    # Build set of minute strings to keep (current + next 10 minutes)
+    from datetime import timedelta
+    keep_minutes = set()
+    for offset in range(-1, 11):
+        t = now + timedelta(minutes=offset)
+        keep_minutes.add(t.strftime("%H%M"))
+
+    removed = 0
+    cache = _load_tts_cache()
+    cache_changed = False
+
+    import glob as _glob
+    for wav_path in _glob.glob(os.path.join(output_dir, "action_*_????.wav")):
+        # Extract the minute suffix (last 4 chars before .wav)
+        basename = os.path.basename(wav_path)
+        minute_str = basename[-8:-4]  # e.g. "1057" from "action_8_clicks_1057.wav"
+        if minute_str.isdigit() and minute_str not in keep_minutes:
+            try:
+                os.unlink(wav_path)
+                removed += 1
+                if wav_path in cache:
+                    del cache[wav_path]
+                    cache_changed = True
+            except OSError:
+                pass
+
+    if removed:
+        log.info("Cleaned up %d old WAV files", removed)
+    if cache_changed:
+        _save_tts_cache(cache)
+
+
+def check_disk_space(cfg=None):
+    """Check free disk space and clean up if low.
+
+    Called by the weather update service. If free space on the TTS
+    output partition drops below threshold, aggressively removes
+    old WAVs and logs a warning.
+    """
+    if cfg is None:
+        cfg = load_config()
+    output_dir = cfg.get("tts", {}).get("output_dir", "/mnt/p4")
+
+    try:
+        stat = os.statvfs(output_dir)
+        free_mb = (stat.f_bavail * stat.f_frsize) / (1024 * 1024)
+    except OSError:
+        return
+
+    if free_mb < DISK_LOW_THRESHOLD_MB:
+        log.warning("Low disk space: %.0fMB free on %s (threshold: %dMB)",
+                     free_mb, output_dir, DISK_LOW_THRESHOLD_MB)
+
+        # Aggressive cleanup: remove ALL minute-variant WAVs
+        import glob as _glob
+        removed = 0
+        for wav_path in _glob.glob(os.path.join(output_dir, "action_*_????.wav")):
+            try:
+                os.unlink(wav_path)
+                removed += 1
+            except OSError:
+                pass
+
+        # Clear cache entries for removed files
+        cache = _load_tts_cache()
+        cache = {k: v for k, v in cache.items() if os.path.exists(k)}
+        _save_tts_cache(cache)
+
+        log.warning("Emergency cleanup: removed %d WAV files, %.0fMB now free",
+                     removed, free_mb)
 
 
 def _run_action(action, cfg, tag="action", extra_ctx=None):

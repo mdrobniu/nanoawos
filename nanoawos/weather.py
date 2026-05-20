@@ -250,10 +250,12 @@ def main():
     update_playlists(full_wav, wind_wav, cfg)
 
     # Pre-generate cached TTS for custom click actions
-    # Only regenerates if rendered text changed (dynamic templates) or WAV missing
-    from nanoawos.actions import pregenerate_tts_actions
+    from nanoawos.actions import pregenerate_tts_actions, check_disk_space
     log.info("Pre-generating custom TTS actions...")
     pregenerate_tts_actions(cfg)
+
+    # Monitor disk space
+    check_disk_space(cfg)
 
     log.info("Weather update complete")
 
